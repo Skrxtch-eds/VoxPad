@@ -1,0 +1,82 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/release.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Compile and test
+        run: |
+          python -m compileall -q outputs/source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -p "test_*.py"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download verified Parakeet model
+        shell: python
+        run: |
+          import sys, threading
+          from pathlib import Path
+          sys.path.insert(0, str(Path('outputs/source').resolve()))
+          from model_manager import download
+          download(Path('outputs/Transcriber/models'), 'parakeet', threading.Event(), lambda *args: None)
+      - name: Build portable archive
+        run: python scripts/build_windows.py --format portable
+      - name: Verify frozen application and checksum
+        shell: python
+        run: |
+          import hashlib, json, os, subprocess, tempfile, zipfile
+          from pathlib import Path
+          archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-portable.zip'))
+          expected = archive.with_suffix('.zip.sha256').read_text('ascii').split()[0]
+          with archive.open('rb') as stream:
+              assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+          with tempfile.TemporaryDirectory() as temporary:
+              target = Path(temporary) / 'VoxPad test'
+              with zipfile.ZipFile(archive) as package:
+                  assert not any(name.startswith('VoxPad/data/') for name in package.namelist())
+                  assert all((target / name).resolve().is_relative_to(target.resolve()) for name in package.namelist())
+                  package.extractall(target)
+              app = target / 'VoxPad'
+              env = {k: v for k, v in os.environ.items() if not k.upper().startswith('PYTHON')}
+              env['PATH'] = os.environ['SystemRoot'] + r'\System32;' + os.environ['SystemRoot']
+              subprocess.run([str(app / 'VoxPad.exe'), '--smoke-test'], cwd=temporary, env=env, check=True, timeout=120)
+              report = json.loads((app / 'smoke-test.json').read_text('utf-8'))
+              assert report['ready'] and report['frozen'], report
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'scripts'); from build_windows import version; print(version())"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tag = "v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Output "Release $tag already exists; keeping its assets."; exit 0 }
+          @"
+          First published version of VoxPad for Windows 10/11 x64.
+
+          Extract the entire ZIP, then open VoxPad/VoxPad.exe. Python, native libraries and the Parakeet model are included. Dictation runs locally on CPU without an internet connection. Whisper and GigaAM are optional downloads in Settings.
+
+          Keep _internal and models next to VoxPad.exe. User settings and history are stored in data next to the EXE. Preserve data and additional models when updating. The build is unsigned.
+          "@ | Set-Content release-notes.txt -Encoding utf8
+          gh release create $tag "outputs/VoxPad-$version-Windows-x64-portable.zip" "outputs/VoxPad-$version-Windows-x64-portable.zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "VoxPad $version" --notes-file release-notes.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

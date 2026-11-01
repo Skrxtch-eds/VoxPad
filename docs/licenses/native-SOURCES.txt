@@ -1,0 +1,28 @@
+VoxPad native dependencies
+
+FFmpeg is used through PyAV 19.0.2 (BSD-3-Clause).
+The bundled libavutil reports: LGPL version 3 or later.
+License texts: native-FFmpeg-COPYING.LGPLv3 and native-FFmpeg-COPYING.GPLv3.
+FFmpeg source: https://github.com/FFmpeg/FFmpeg
+PyAV source and wheel build scripts: https://github.com/PyAV-Org/PyAV/tree/v19.0.2
+The FFmpeg shared DLLs live in _internal/av.libs and may be replaced with
+interface-compatible builds. Codec DLLs have their own upstream licenses.
+
+PortAudio: Copyright (c) 1999-2006 Ross Bencina and Phil Burk.
+Source: https://github.com/PortAudio/portaudio
+Windows binary build sources: https://github.com/spatialaudio/portaudio-binaries
+License: native-PortAudio-LICENSE.txt; binaries are in _internal/_sounddevice_data.
+
+Tcl/Tk: https://github.com/tcltk/tcl and https://github.com/tcltk/tk
+License: native-Tcl-LICENSE.txt and _internal/_tk_data/license.terms.
+
+libsndfile and its codec dependencies: see
+licenses/soundfile/licensing/license_notes.md and
+licenses/soundfile/_soundfile_data/COPYING.
+Source: https://github.com/libsndfile/libsndfile
+
+pystray 0.19.5: LGPLv3, https://github.com/moses-palmer/pystray
+License: licenses/pystray/pystray-0.19.5.dist-info/COPYING.LGPL and COPYING.
+The source distribution is available from https://pypi.org/project/pystray/0.19.5/
+Rebuild VoxPad from source after installing a modified pystray to replace it.
+No bundled third-party component has been modified by VoxPad.
