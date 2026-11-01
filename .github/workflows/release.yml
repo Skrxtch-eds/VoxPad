@@ -40,28 +40,29 @@ jobs:
           from model_manager import download
           download(Path('outputs/Transcriber/models'), 'parakeet', threading.Event(), lambda *args: None)
       - name: Build portable archive
-        run: python scripts/build_windows.py --format portable
-      - name: Verify frozen application and checksum
+        run: python scripts/build_runtime_portable.py
+      - name: Scan distribution with Microsoft Defender
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'scripts'); from build_windows import version; print(version())"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $scanner = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
+          $bundle = Join-Path $env:GITHUB_WORKSPACE "work/runtime-dist-$version/VoxPad"
+          & $scanner -Scan -ScanType 3 -File $bundle -ReturnHR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify portable runtime and checksum
         shell: python
         run: |
-          import hashlib, json, os, subprocess, tempfile, zipfile
+          import hashlib, sys
           from pathlib import Path
-          archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-portable.zip'))
+          sys.path.insert(0, str(Path('tests').resolve()))
+          from runtime_portable_smoke import run
+          archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-runtime.zip'))
           expected = archive.with_suffix('.zip.sha256').read_text('ascii').split()[0]
           with archive.open('rb') as stream:
               assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected
-          with tempfile.TemporaryDirectory() as temporary:
-              target = Path(temporary) / 'VoxPad test'
-              with zipfile.ZipFile(archive) as package:
-                  assert not any(name.startswith('VoxPad/data/') for name in package.namelist())
-                  assert all((target / name).resolve().is_relative_to(target.resolve()) for name in package.namelist())
-                  package.extractall(target)
-              app = target / 'VoxPad'
-              env = {k: v for k, v in os.environ.items() if not k.upper().startswith('PYTHON')}
-              env['PATH'] = os.environ['SystemRoot'] + r'\System32;' + os.environ['SystemRoot']
-              subprocess.run([str(app / 'VoxPad.exe'), '--smoke-test'], cwd=temporary, env=env, check=True, timeout=120)
-              report = json.loads((app / 'smoke-test.json').read_text('utf-8'))
-              assert report['ready'] and report['frozen'], report
+          audio = Path('outputs/Transcriber/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/test_wavs/en.wav')
+          report = run(archive.resolve(), audio.resolve(), session_check=False)
+          assert report['ready'] and report['portable_runtime'], report
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,11 +73,11 @@ jobs:
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) { Write-Output "Release $tag already exists; keeping its assets."; exit 0 }
           @"
-          First published version of VoxPad for Windows 10/11 x64.
+          VoxPad for Windows 10/11 x64.
 
-          Extract the entire ZIP, then open VoxPad/VoxPad.exe. Python, native libraries and the Parakeet model are included. Dictation runs locally on CPU without an internet connection. Whisper and GigaAM are optional downloads in Settings.
+          Extract the entire ZIP, then open VoxPad/VoxPad.cmd. Python, native libraries and the Parakeet model are included. Dictation runs locally on CPU without an internet connection. Whisper and GigaAM are optional downloads in Settings.
 
-          Keep _internal and models next to VoxPad.exe. User settings and history are stored in data next to the EXE. Preserve data and additional models when updating. The build is unsigned.
+          Keep runtime, app, models and launch.py next to VoxPad.cmd. User settings and history are stored in data. Preserve data and additional models when updating. The app uses a private Python runtime and readable source modules.
           "@ | Set-Content release-notes.txt -Encoding utf8
-          gh release create $tag "outputs/VoxPad-$version-Windows-x64-portable.zip" "outputs/VoxPad-$version-Windows-x64-portable.zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "VoxPad $version" --notes-file release-notes.txt
+          gh release create $tag "outputs/VoxPad-$version-Windows-x64-runtime.zip" "outputs/VoxPad-$version-Windows-x64-runtime.zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "VoxPad $version" --notes-file release-notes.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

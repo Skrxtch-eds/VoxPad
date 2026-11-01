@@ -22,7 +22,7 @@ from windows_input import copy_text, paste_if_focused, press_enter_if_focused
 from audio_cues import AudioCues
 from settings_actions import SettingsActions
 
-VERSION='0.5.1'
+VERSION='0.5.3'
 NAMES={0xA0:'Left Shift',0xA1:'Right Shift',0xA2:'Left Ctrl',0xA3:'Right Ctrl',0xA4:'Left Alt',0xA5:'Right Alt',0x20:'Space',0x0D:'Enter',0x1B:'Escape'}
 
 

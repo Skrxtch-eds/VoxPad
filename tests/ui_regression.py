@@ -40,12 +40,18 @@ def run():
             deadline=time.monotonic()+10
             while (not app.engine or app.loading_model) and time.monotonic()<deadline:root.update();time.sleep(.01)
         root.deiconify();pump(root)
-        assert abs(root.winfo_width()-1100*native_dpi*.646875)<4
-        assert abs(root.winfo_height()-825*native_dpi*.646875)<4
+        from recording_overlay import MonitorInfo
+        info=MonitorInfo();info.size=C.sizeof(info)
+        assert u.GetMonitorInfoW(u.MonitorFromWindow(root.winfo_id(),2),C.byref(info))
+        work_width=info.work.right-info.work.left;work_height=info.work.bottom-info.work.top
+        assert abs(root.winfo_width()-min(round(1100*native_dpi*UI_SCALE),work_width-40))<4
+        assert abs(root.winfo_height()-min(round(825*native_dpi*UI_SCALE),work_height-64))<4
         scaling=float(root.tk.call('tk','scaling'))
         app.open_settings();ui=app.settings_ui;pump(root)
         assert float(root.tk.call('tk','scaling'))==scaling,'Toplevel scaled the interpreter twice'
-        report['checks'].append('64.6875% density, matching fonts and geometry, no repeated scaling')
+        assert abs(UI_SCALE/.646875-1.5)<1e-9
+        assert abs(dp(root,100)-round(100*native_dpi*UI_SCALE))<=1
+        report['checks'].append('Interface enlarged by 50%, matching fonts and geometry, work-area limits, no repeated scaling')
         for section in ui.sections:
             ui.select(section);pump(root)
             assert not ui.notice.get(),ui.notice.get()

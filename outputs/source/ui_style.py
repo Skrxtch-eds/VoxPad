@@ -6,7 +6,8 @@ from tkinter import ttk,font as tkfont
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont,ImageTk
 
-UI_SCALE=.646875
+# 50% larger than the 0.5.1 interface; fonts and pixel dimensions share this scale.
+UI_SCALE=.646875*1.5
 
 def initialize_scale(window):
     """Set points and pixel units together, once per Tk interpreter."""

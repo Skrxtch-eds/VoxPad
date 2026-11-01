@@ -6,9 +6,11 @@
 
 ## Готовая программа
 
-Версия 0.5.1 предназначена для Windows 10/11 x64. Переносимый архив `VoxPad-0.5.1-Windows-x64-portable.zip` собирается командой ниже; локально он находится в `outputs/`. Готовая программа публикуется в [релизах](https://github.com/Skrxtch-eds/VoxPad/releases).
+Версия 0.5.3 предназначена для Windows 10/11 x64. Переносимый архив `VoxPad-0.5.3-Windows-x64-runtime.zip` собирается командой ниже; локально он находится в `outputs/`. Готовые программы публикуются в [релизах](https://github.com/Skrxtch-eds/VoxPad/releases).
 
-Извлеките архив целиком и запустите `VoxPad/VoxPad.exe`. Python, библиотеки и модель Parakeet входят в сборку; интернет для диктовки не нужен. Папки `_internal` и `models` должны оставаться рядом с EXE. Не запускайте программу прямо из ZIP.
+**Известная проблема сборки 0.5.2:** Microsoft Defender блокирует `VoxPad.exe` с обнаружением `Behavior:Win32/DefenseEvasion.A!ml`. Ложное срабатывание пока не подтверждено. Эта сборка не рекомендуется к запуску или распространению до завершения разбора; не отключайте защиту и не добавляйте исключения ради её запуска. Подробности — в [отчёте](docs/defender-0.5.2.md).
+
+Извлеките архив целиком и запустите `VoxPad/VoxPad.cmd`. Python, библиотеки и модель Parakeet входят в сборку; интернет для диктовки не нужен. Папки `runtime`, `app` и `models` должны оставаться рядом с файлом запуска. Не запускайте программу прямо из ZIP. В версии 0.5.3 используются открытые Python-модули и отдельный неизменённый Python вместо упакованного EXE.
 
 Архив занимает около 585 МБ. Для распаковки оставьте не менее 2 ГБ свободного места. Сборка не подписана цифровым сертификатом. Скачивание исходников через Code → Download ZIP не заменяет готовую программу.
 
@@ -37,7 +39,7 @@ py -3.12 -m venv .venv
 
 Вставка в приложение, запущенное от администратора, может потребовать таких же прав у VoxPad.
 
-В готовой сборке настройки, история и незавершённые записи хранятся в `data/` рядом с EXE, модели — в `models/`. При запуске исходников это `outputs/Transcriber/data/` и `outputs/Transcriber/models/`. Эти данные исключены из Git. При обновлении закройте VoxPad и сохраните `data/` и дополнительные модели.
+В готовой сборке настройки, история и незавершённые записи хранятся в `data/` рядом с `VoxPad.cmd`, модели — в `models/`. При запуске исходников это `outputs/Transcriber/data/` и `outputs/Transcriber/models/`. Эти данные исключены из Git. При обновлении закройте VoxPad и перенесите `data/` и дополнительные модели из старой папки в новую.
 
 ## Сборка и проверки
 
@@ -46,10 +48,10 @@ py -3.12 -m venv .venv
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
-.venv\Scripts\python.exe scripts\build_windows.py --format portable
+.venv\Scripts\python.exe scripts\build_runtime_portable.py
 ```
 
-Результат: `outputs/VoxPad-0.5.1-Windows-x64-portable.zip` и файл SHA-256. Сборщик включает только Parakeet; Whisper и GigaAM загружаются отдельно. Для установщика дополнительно нужен NSIS 3. UI-проверки, тест готового EXE и параметры сборки описаны в [заметках для разработки](docs/development.md).
+Результат: `outputs/VoxPad-0.5.3-Windows-x64-runtime.zip` и файл SHA-256. Сборщик проверяет контрольные суммы библиотек по установленным RECORD, включает только Parakeet и создаёт `BUILD-MANIFEST.json` с хешами всех файлов. Whisper и GigaAM загружаются отдельно. Для нового формата установщик пока не выпускается. Проверки и предыдущий формат EXE описаны в [заметках для разработки](docs/development.md).
 
 Используются Tkinter, sherpa-onnx, sounddevice и PyAV. Версии зависимостей закреплены в `requirements.txt` и `requirements-build.txt`.
 

@@ -33,7 +33,7 @@ def run(archive,audio):
         assert spelling=='Ёжик всё ещё живёт. Ёлка.',spelling
         clean={key:value for key,value in os.environ.items() if not key.upper().startswith('PYTHON')}
         clean['PATH']=os.environ['SystemRoot']+r'\System32;'+os.environ['SystemRoot']
-        subprocess.run([str(app/'VoxPad.exe'),'--smoke-test','--smoke-audio',str(audio)],
+        subprocess.run([str(app/'VoxPad.exe'),'--smoke-test','--tray','--smoke-audio',str(audio)],
                        check=True,timeout=90,env=clean,cwd=app)
         report=json.loads((app/'smoke-test.json').read_text('utf-8'))
         assert report['ready'] and report['frozen'] and report['transcript'],report

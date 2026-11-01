@@ -220,6 +220,7 @@ class CoreApp:
                         self.update_hotkey()
                     else:
                         report={'ready':True,'load_seconds':seconds,'frozen':bool(getattr(sys,'frozen',False)),
+                                'portable_runtime':bool(getattr(sys,'_voxpad_portable_root',None)),
                                 'base':str(BASE),'executable':sys.executable}
                         if getattr(self,'smoke_audio',None):
                             try:

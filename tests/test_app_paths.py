@@ -26,6 +26,20 @@ class ApplicationPaths(unittest.TestCase):
             set_autostart(True, r'C:\unused\Launch.vbs')
             self.assertEqual(write.call_args.args[-1], r'"C:\VoxPad\VoxPad.exe" --tray')
 
+    def test_private_runtime_keeps_data_next_to_launcher(self):
+        directory=Path(__file__).resolve().parent/'Папка с пробелами/VoxPad'
+        with patch.object(sys,'frozen',False,create=True),patch.object(sys,'_voxpad_portable_root',directory,create=True):
+            self.assertEqual(application_root(),directory.resolve())
+
+    def test_private_runtime_autostart_preserves_paths_and_tray_argument(self):
+        import subprocess,winreg
+        directory=Path(__file__).resolve().parent/'Папка с пробелами/VoxPad'
+        with patch.object(sys,'frozen',False,create=True),patch.object(sys,'_voxpad_portable_root',directory,create=True),\
+             patch.object(winreg,'CreateKey'),patch.object(winreg,'SetValueEx') as write:
+            set_autostart(True,r'C:\unused\Launch.vbs')
+            self.assertEqual(write.call_args.args[-1],subprocess.list2cmdline([
+                str(directory.resolve()/'runtime/pythonw.exe'),str(directory.resolve()/'launch.py'),'--tray']))
+
 
 if __name__ == '__main__':
     unittest.main()

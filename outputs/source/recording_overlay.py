@@ -1,6 +1,7 @@
 """Non-activating, click-through Windows glass recording indicator."""
 import ctypes as C
 from ctypes import wintypes as W
+from contextlib import contextmanager
 import math
 import time
 
@@ -10,6 +11,24 @@ from PIL import Image, ImageDraw, ImageFilter
 u = C.WinDLL('user32', use_last_error=True)
 g = C.WinDLL('gdi32', use_last_error=True)
 u.GetForegroundWindow.restype = W.HWND
+_set_dpi_context=getattr(u,'SetThreadDpiAwarenessContext',None)
+if _set_dpi_context:
+    _set_dpi_context.argtypes=[W.HANDLE]
+    _set_dpi_context.restype=W.HANDLE
+
+
+@contextmanager
+def physical_pixels():
+    """Keep this native window crisp on mixed-DPI displays without changing Tk."""
+    previous=None
+    if _set_dpi_context:
+        previous=_set_dpi_context(W.HANDLE(-4)) or _set_dpi_context(W.HANDLE(-3))
+    try:
+        yield
+    finally:
+        if previous:_set_dpi_context(previous)
+
+
 for name, args, result in (
     ('CreateWindowExW', [W.DWORD,W.LPCWSTR,W.LPCWSTR,W.DWORD,C.c_int,C.c_int,C.c_int,C.c_int,W.HWND,W.HMENU,W.HINSTANCE,C.c_void_p], W.HWND),
     ('GetDC',[W.HWND],W.HDC), ('ReleaseDC',[W.HWND,W.HDC],C.c_int),
@@ -60,7 +79,10 @@ def capture_backdrop(x,y,width,height):
         g.SelectObject(memory,old);g.DeleteObject(bitmap);g.DeleteDC(memory);u.ReleaseDC(None,screen)
 
 class RecordingOverlay:
-    width, height, margin, scale = 234, 117, 20, 1
+    # Design coordinates stay fixed: resizing must not alter the glass or wave.
+    width, height, margin, scale = 234, 117, 20, 2
+    reference_size = (2880, 1920)
+    display_scale = 1.
     fps = 60
     vertical_padding = 15
     backdrop_blur_mix = .60  # 20% stronger than the previous .50 mix.
@@ -68,8 +90,9 @@ class RecordingOverlay:
 
     def __init__(self, root, get_level):
         self.root, self.get_level = root, get_level
-        self.hwnd = u.CreateWindowExW(0x080800A8,'STATIC','Recording capsule',0x80000000,
-                                      0,0,320,180,None,None,None,None)
+        with physical_pixels():
+            self.hwnd = u.CreateWindowExW(0x080800A8,'STATIC','Recording capsule',0x80000000,
+                                          0,0,320,180,None,None,None,None)
         if not self.hwnd:
             raise C.WinError(C.get_last_error())
         self.visible=False
@@ -80,16 +103,32 @@ class RecordingOverlay:
         self.glass=None
         self.last_tick=time.perf_counter()
 
+    def scaled(self, value):
+        return max(1,round(value*self.display_scale))
+
+    def configure_monitor(self, info):
+        """Use the user's 2880×1920 display as the size reference, not Tk DPI."""
+        screen=info.monitor;rect=info.work
+        self.display_scale=min((screen.right-screen.left)/self.reference_size[0],
+                               (screen.bottom-screen.top)/self.reference_size[1])
+        # Include the shadow and lower gap when fitting unusually small work areas.
+        self.display_scale=min(self.display_scale,(rect.right-rect.left)/(self.width+40),
+                               (rect.bottom-rect.top)/(self.height+76))
+        # Always render at >=2x the output resolution and >=2x the original design.
+        self.scale=max(2,math.ceil(self.display_scale*2))
+        self.x=(rect.left+rect.right-self.scaled(self.width))//2
+        self.y=rect.bottom-self.scaled(self.height)-self.scaled(36)
+
+    @physical_pixels()
     def prepare(self, target):
         info=MonitorInfo(); info.size=C.sizeof(info)
+        target=target or u.GetForegroundWindow() or self.root.winfo_id()
         monitor=u.MonitorFromWindow(target,2)
         if not u.GetMonitorInfoW(monitor,C.byref(info)):
             raise C.WinError(C.get_last_error())
-        rect=info.work
-        self.x=(rect.left+rect.right-self.width)//2
-        self.y=rect.bottom-self.height-36
+        self.configure_monitor(info)
         # Capture only the small area behind the indicator; never saved or uploaded.
-        backdrop=capture_backdrop(self.x,self.y,self.width,self.height)
+        backdrop=capture_backdrop(self.x,self.y,self.scaled(self.width),self.scaled(self.height))
         self.prepare_surface(backdrop)
 
     def prepare_surface(self,backdrop):
@@ -188,8 +227,9 @@ class RecordingOverlay:
         white=Image.new('RGBA',(w,h),color); white.putalpha(alpha)
         frame=self.static_frame.copy()
         frame.alpha_composite(white,(20*s,20*s))
-        return frame.resize((self.width+40,self.height+40),Image.Resampling.LANCZOS)
+        return frame.resize((self.scaled(self.width+40),self.scaled(self.height+40)),Image.Resampling.LANCZOS)
 
+    @physical_pixels()
     def present(self, image, opacity):
         w,h=image.size
         arr=np.asarray(image).copy()
@@ -204,7 +244,7 @@ class RecordingOverlay:
         old=g.SelectObject(memory,bitmap)
         try:
             C.memmove(bits,data,len(data))
-            position=W.POINT(self.x-20,self.y-20+round((1-opacity)*12))
+            position=W.POINT(self.x-self.scaled(20),self.y-self.scaled(20)+round((1-opacity)*12*self.display_scale))
             size=W.SIZE(w,h); origin=W.POINT(0,0); blend=Blend(0,0,round(255*opacity),1)
             if not u.UpdateLayeredWindow(self.hwnd,dc,C.byref(position),C.byref(size),memory,C.byref(origin),0,C.byref(blend),2):
                 raise C.WinError(C.get_last_error())
