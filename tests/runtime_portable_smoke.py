@@ -32,12 +32,13 @@ def run(archive,audio,session_check=True):
         # A private runtime must ignore external environment settings as well.
         clean['PYTHONHOME']=str(target/'not-a-python-installation')
         clean['PYTHONPATH']=str(target/'untrusted-module-search-path')
-        subprocess.run([str(directory/'runtime/python.exe'),'-I',str(directory/'launch.py'),
-                        '--smoke-test','--tray','--smoke-audio',str(audio)],
+        command=[str(directory/'runtime/python.exe'),'-I',str(directory/'launch.py'),'--smoke-test','--tray']
+        if audio is not None:command.extend(('--smoke-audio',str(audio)))
+        subprocess.run(command,
                        env=clean,cwd=temporary,check=True,timeout=120)
         report=json.loads((directory/'smoke-test.json').read_text('utf-8'))
         assert report['ready'] and report['portable_runtime'] and not report['frozen'],report
-        assert report['transcript'],report
+        if audio is not None:assert report['transcript'],report
         assert Path(report['base'])==directory
         assert Path(report['executable'])==directory/'runtime/python.exe'
         assert not (directory/'runtime/data').exists()
@@ -50,8 +51,9 @@ def run(archive,audio,session_check=True):
         report['checks']=['Whole-archive integrity verified before launch','No PyInstaller executable',
                           'Cyrillic and spaces in paths; clean Windows PATH',
                           'Isolated imports ignore external PYTHONHOME and PYTHONPATH',
-                          'Bundled model; actual speech recognition and audio COM',
+                          'Bundled model loads from the private runtime',
                           'Data root stays beside launcher instead of inside runtime']
+        if audio is not None:report['checks'].append('Actual speech recognition and audio COM')
         if session_check:report['checks'].append('Normal startup with actual tray and native keyboard hook, without microphone capture')
         return report
 

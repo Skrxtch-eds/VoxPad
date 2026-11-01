@@ -60,8 +60,8 @@ jobs:
           expected = archive.with_suffix('.zip.sha256').read_text('ascii').split()[0]
           with archive.open('rb') as stream:
               assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected
-          audio = Path('outputs/Transcriber/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/test_wavs/en.wav')
-          report = run(archive.resolve(), audio.resolve(), session_check=False)
+          # Hosted runners have no interactive audio session; verify model startup there.
+          report = run(archive.resolve(), None, session_check=False)
           assert report['ready'] and report['portable_runtime'], report
       - name: Publish release
         env:
