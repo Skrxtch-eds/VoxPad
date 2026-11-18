@@ -13,15 +13,22 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(setup, archive, audio, online=False):
     with tempfile.TemporaryDirectory(prefix='online-setup-', dir=ROOT/'work') as temporary:
         target = Path(temporary)/'Установка с пробелами'
+        (target/'data').mkdir(parents=True)
+        sentinel = target/'data'/'keep.txt'
+        sentinel.write_text('preserve user data', 'utf-8')
+        invalid = Path(temporary)/'invalid.zip'
+        invalid.write_bytes(b'invalid archive with a wrong SHA-256')
+        rejected = subprocess.run([str(setup), '--silent', '--test-mode',
+                                   '--target=' + str(target), '--archive=' + str(invalid)], timeout=30)
+        assert rejected.returncode == 1
+        assert not (target/'current.txt').exists()
+        assert sentinel.read_text('utf-8') == 'preserve user data'
         command = [str(setup), '--silent', '--test-mode', '--target=' + str(target)]
         if not online:
             command.append('--archive=' + str(archive))
         subprocess.run(command, check=True, timeout=900)
         version = (target/'current.txt').read_text().strip()
         folder = target/'versions'/version
-        (target/'data').mkdir(exist_ok=True)
-        sentinel = target/'data'/'keep.txt'
-        sentinel.write_text('preserve user data', 'utf-8')
         clean = {key: value for key, value in os.environ.items() if not key.upper().startswith('PYTHON')}
         clean['PATH'] = os.environ['SystemRoot'] + r'\System32'
         arguments = ['--smoke-test', '--tray', '--smoke-audio', str(audio)]
@@ -48,7 +55,8 @@ def run(setup, archive, audio, online=False):
         assert not (target/'Uninstall.exe').exists()
         assert sentinel.read_text('utf-8') == 'preserve user data'
         return dict(passed=True, version=version, online=online, transcript=report['transcript'],
-                    checks=['actual EXE setup', 'native launcher with Cyrillic/spaces',
+                    checks=['wrong archive SHA-256 rejected without changing user data',
+                            'actual EXE setup', 'native launcher with Cyrillic/spaces',
                             'bundled ASR', 'shared data root', 'reinstall preserves data',
                             'uninstall removes application and preserves data'])
 
