@@ -38,6 +38,13 @@ jobs:
           download(Path('outputs/Transcriber/models'), 'parakeet', threading.Event(), lambda *args: None)
       - name: Build portable archive
         run: python scripts/build_runtime_portable.py
+      - name: Prepare NSIS 3.13
+        run: |
+          New-Item -ItemType Directory -Force work/tools | Out-Null
+          Invoke-WebRequest 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip' -OutFile work/tools/nsis.zip
+          $expected = 'BA63DFFC4410EE89193E1CB5A41989991BD77C61068DA17E3156D136B7B0B3D8'
+          if ((Get-FileHash work/tools/nsis.zip -Algorithm SHA256).Hash -ne $expected) { throw 'NSIS SHA-256 mismatch' }
+          Expand-Archive work/tools/nsis.zip -DestinationPath work/tools
       - name: Build online setup
         shell: python
         run: |

@@ -1,73 +1,22 @@
-using System;
-using System.ComponentModel;
-using System.Diagnostics;
+﻿using System;
+using System.Collections.Generic;
+using System.Web.Script.Serialization;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Microsoft.Win32;
 
-internal sealed class Setup : Form
+internal static class Setup
 {
     private const string Release = "@VERSION@";
     private const string PayloadUrl = "@URL@";
     private const string PayloadHash = "@SHA256@";
     private static string root;
     private static string localArchive;
+    private static bool autostart = true;
     private static bool testMode;
-    private static bool silent;
-    private readonly Label status = new Label { Left = 24, Top = 24, Width = 455, Height = 60 };
-    private readonly ProgressBar progress = new ProgressBar { Left = 24, Top = 92, Width = 450 };
-    private readonly Button action = new Button { Left = 324, Top = 135, Width = 150, Height = 32, Text = "Установить" };
-    private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
-    private bool running;
-    private bool completed;
-
-    private Setup()
-    {
-        Text = "Установка VoxPad " + Release;
-        ClientSize = new System.Drawing.Size(500, 190);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
-        status.Text = "Установщик скачает приложение и модель Parakeet.\nПосле установки диктовка работает без интернета.";
-        Controls.AddRange(new Control[] { status, progress, action });
-        action.Click += async (sender, args) =>
-        {
-            if (completed) { Close(); return; }
-            if (running) { cancellation.Cancel(); return; }
-            running = true;
-            action.Text = "Отменить";
-            try
-            {
-                await Install();
-                status.Text = "VoxPad установлен. Запустите приложение из меню «Пуск».";
-                progress.Value = 100;
-                completed = true;
-                action.Text = "Готово";
-            }
-            catch (OperationCanceledException) { status.Text = "Установка отменена."; action.Text = "Закрыть"; completed = true; }
-            catch (Exception error) { status.Text = "Установка не завершена. " + error.Message; action.Text = "Закрыть"; completed = true; }
-            finally { running = false; }
-        };
-        FormClosing += (sender, args) => { if (running) { cancellation.Cancel(); args.Cancel = true; } };
-    }
-
-    private void Report(string text, int value)
-    {
-        if (IsHandleCreated && InvokeRequired)
-            BeginInvoke((Action)(() => Report(text, value)));
-        else { status.Text = text; progress.Value = Math.Max(0, Math.Min(100, value)); }
-    }
-
-    private async Task Install()
-    {
-        await Task.Run(() => InstallFiles(Report, cancellation.Token));
-    }
 
     private static string Hash(string filename)
     {
@@ -188,48 +137,33 @@ internal sealed class Setup : Form
             }
             string launcher = Path.Combine(root, "VoxPad.exe");
             File.Copy(Path.Combine(target, "VoxPad.exe"), launcher, true);
-            if (!String.Equals(Application.ExecutablePath, Path.Combine(root, "Uninstall.exe"), StringComparison.OrdinalIgnoreCase))
-                File.Copy(Application.ExecutablePath, Path.Combine(root, "Uninstall.exe"), true);
             File.WriteAllText(marker, "VoxPad");
             string next = Path.Combine(root, "current.next");
             File.WriteAllText(next, Release);
             string current = Path.Combine(root, "current.txt");
             if (File.Exists(current)) File.Replace(next, current, null);
             else File.Move(next, current);
-            if (!testMode)
-            {
-                Shortcuts(false);
-                using (RegistryKey key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\VoxPad"))
-                {
-                    key.SetValue("DisplayName", "VoxPad");
-                    key.SetValue("DisplayVersion", Release);
-                    key.SetValue("InstallLocation", root);
-                    key.SetValue("DisplayIcon", launcher);
-                    key.SetValue("UninstallString", "\"" + Path.Combine(root, "Uninstall.exe") + "\" --uninstall");
-                    key.SetValue("NoModify", 1);
-                    key.SetValue("NoRepair", 1);
-                }
-            }
+            SavePreferences();
             report("Установка завершена.", 100);
         }
         finally { if (Directory.Exists(temporary)) Directory.Delete(Extended(temporary), true); }
     }
 
-    private static void Shortcuts(bool remove)
+    private static void SavePreferences()
     {
-        string menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "VoxPad.lnk");
-        string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "VoxPad.lnk");
-        foreach (string path in new[] { menu, desktop })
-        {
-            if (remove) { if (File.Exists(path)) File.Delete(path); continue; }
-            Type type = Type.GetTypeFromProgID("WScript.Shell");
-            dynamic shell = Activator.CreateInstance(type);
-            dynamic shortcut = shell.CreateShortcut(path);
-            shortcut.TargetPath = Path.Combine(root, "VoxPad.exe");
-            shortcut.WorkingDirectory = root;
-            shortcut.IconLocation = shortcut.TargetPath;
-            shortcut.Save();
-        }
+        string directory = Path.Combine(root, "data");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "settings.json");
+        var json = new JavaScriptSerializer();
+        var settings = File.Exists(path)
+            ? json.Deserialize<Dictionary<string, object>>(File.ReadAllText(path))
+            : new Dictionary<string, object>();
+        if (settings == null) throw new IOException("Некорректный файл настроек: " + path);
+        settings["autostart"] = autostart;
+        string next = path + ".setup-next";
+        File.WriteAllText(next, json.Serialize(settings), new UTF8Encoding(false));
+        if (File.Exists(path)) File.Replace(next, path, null);
+        else File.Move(next, path);
     }
 
     private static void Uninstall()
@@ -237,17 +171,9 @@ internal sealed class Setup : Form
         CheckRunning();
         if (!File.Exists(Path.Combine(root, ".voxpad-install")))
             throw new IOException("Папка установки VoxPad не найдена.");
-        if (!testMode)
-        {
-            Shortcuts(true);
-            Registry.CurrentUser.DeleteSubKeyTree("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\VoxPad", false);
-            using (RegistryKey key = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run", true))
-                if (key != null && Convert.ToString(key.GetValue("ParakeetTranscriber")).IndexOf(root, StringComparison.OrdinalIgnoreCase) >= 0)
-                    key.DeleteValue("ParakeetTranscriber", false);
-        }
         string versions = Path.Combine(root, "versions");
         if (Directory.Exists(versions)) Directory.Delete(Extended(versions), true);
-        foreach (string name in new[] { "VoxPad.exe", "current.txt", ".voxpad-install", "Uninstall.exe" })
+        foreach (string name in new[] { "VoxPad.exe", "current.txt", ".voxpad-install" })
         {
             string path = Path.Combine(root, name);
             for (int attempt = 0; attempt < 20; attempt++)
@@ -263,37 +189,38 @@ internal sealed class Setup : Form
     {
         AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false);
         AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false);
-        Application.EnableVisualStyles();
-        root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "VoxPad");
+        Console.OutputEncoding = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        root = null;
         foreach (string arg in args)
         {
             if (arg.StartsWith("--target=")) root = Path.GetFullPath(arg.Substring(9));
             if (arg.StartsWith("--archive=")) localArchive = Path.GetFullPath(arg.Substring(10));
+            if (arg == "--autostart=0") autostart = false;
             if (arg == "--test-mode") testMode = true;
-            if (arg == "--silent") silent = true;
         }
         try
         {
-            if (Array.IndexOf(args, "--uninstall") >= 0)
-            {
-                if (!silent && MessageBox.Show("Удалить VoxPad? История и настройки останутся в папке data.",
-                    "VoxPad", MessageBoxButtons.YesNo) != DialogResult.Yes) return 0;
-                string worker = Path.Combine(Path.GetTempPath(), "VoxPad-uninstall-" + Guid.NewGuid().ToString("N") + ".exe");
-                File.Copy(Application.ExecutablePath, worker);
-                Process.Start(worker, "--uninstall-worker --target=\"" + root + "\" " + (testMode ? "--test-mode " : "") + (silent ? "--silent" : ""));
-                return 0;
-            }
-            if (Array.IndexOf(args, "--uninstall-worker") >= 0) { Uninstall(); return 0; }
+            if (root == null) throw new ArgumentException("Папка установки не указана.");
+            if (Array.IndexOf(args, "--remove-files") >= 0) { Uninstall(); return 0; }
             if (!Environment.Is64BitOperatingSystem) throw new PlatformNotSupportedException("Нужна 64-битная Windows 10/11.");
-            if (silent) { InstallFiles((text, percent) => { }, CancellationToken.None); return 0; }
-            Application.Run(new Setup());
+            string last = null;
+            int lastPercent = -1;
+            InstallFiles((text, percent) =>
+            {
+                if (percent != lastPercent || (percent == 0 && last == null))
+                {
+                    Console.WriteLine(text);
+                    last = text;
+                    lastPercent = percent;
+                }
+            }, CancellationToken.None);
             return 0;
         }
         catch (Exception error)
         {
             string log = Path.Combine(Path.GetTempPath(), "VoxPad-setup-error.log");
             File.WriteAllText(log, error.ToString());
-            if (!silent) MessageBox.Show(error.Message + "\n\nОтчёт: " + log, "VoxPad", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Console.WriteLine(error.Message + " — " + log);
             return 1;
         }
     }
