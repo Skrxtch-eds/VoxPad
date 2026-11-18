@@ -83,16 +83,28 @@ class CapsuleMotion:
     shape: float = 1.
     offset: float = 0.
     opacity: float = 1.
-
-
-def smoothstep(value):
-    value = min(1., max(0., value))
-    return value * value * (3. - 2. * value)
+    span: float = 1.
+    glint: float = -1.
+    glint_strength: float = 0.
+    gap: float = 0.
 
 
 def smootherstep(value):
     value = min(1., max(0., value))
-    return value ** 3 * (value * (value * 6. - 15.) + 10.)
+    return min(1., max(0., value ** 3 * (value * (value * 6. - 15.) + 10.)))
+
+
+def velocity_tail(elapsed, velocity, room, max_duration=.065):
+    """Carry an interrupted edge's tangent briefly, then settle onto its new path."""
+    if not velocity or room<=0.:
+        return 0.,0.
+    duration=min(max_duration,2.*room/abs(velocity))
+    q=min(1.,max(0.,elapsed/duration))
+    if q>=1.:
+        return 0.,0.
+    displacement=velocity*duration*(q-6*q**3+8*q**4-3*q**5)
+    rate=velocity*(1.-18*q*q+32*q**3-15*q**4)
+    return displacement,rate
 
 
 class RecordingOverlay:
@@ -104,8 +116,8 @@ class RecordingOverlay:
     reference_size = (2880, 1920)
     display_scale = 1.
     fps = 120
-    enter_duration, exit_duration = .320, .180
-    orb_diameter = 44.
+    motion_speed = 1.56
+    enter_duration, exit_duration = .560/motion_speed, .340/motion_speed
     vertical_padding = 15
     backdrop_blur_mix = .60  # 20% stronger than the previous .50 mix.
     edge_refraction = 20.4   # 70% stronger than the previous 12px displacement.
@@ -122,7 +134,7 @@ class RecordingOverlay:
         self.job=None
         self.amount=0.
         self.level=0.
-        self.motion = CapsuleMotion(0., 0., 0.)
+        self.motion = CapsuleMotion(0., 0., 0., span=.08)
         self.motion_phase = 'hidden'
         self.last_tick=time.perf_counter()
 
@@ -142,8 +154,7 @@ class RecordingOverlay:
         self.scale=max(3,math.ceil(self.display_scale*2.5))
         self.x=(rect.left+rect.right-self.scaled(self.width))//2
         self.y=rect.bottom-self.scaled(self.height)-self.scaled(36)
-        # Travel beyond the monitor edge, including a taskbar outside the work area.
-        self.travel=(screen.bottom-self.y-self.scaled(self.height)/2)/self.display_scale+self.orb_diameter
+        self._motion_geometry = None
 
     def prepare_surface(self,backdrop):
         """Shared real/preview renderer. No microphone or window capture here."""
@@ -182,7 +193,6 @@ class RecordingOverlay:
         self.sin_envelope=np.maximum(0,np.sin(np.pi*self.v))
         self.mask_values=np.asarray(mask.resize(self.wave_size,Image.Resampling.LANCZOS),dtype=np.float32)/255.
         self.wave_y=np.arange(wave_h,dtype=np.float32)[:,None]+.5
-        self.wave_x=np.arange(wave_w,dtype=np.float32)+.5
         self.wave_envelope=self.sin_envelope**3.2*self.wave_gain
         self.blur_sigma=self.wave_scale*(self.width/280.)*(
             7.5*self.sin_envelope**2.2+3.*self.sin_envelope**.8+1.2*(1.-self.sin_envelope))
@@ -190,6 +200,9 @@ class RecordingOverlay:
         self.safe_band=np.zeros((wave_h,1),dtype=np.float32)
         padding=math.ceil(self.vertical_padding*self.wave_scale)
         self.safe_band[padding:wave_h-padding]=1.
+        edge=np.minimum(self.wave_y-padding,wave_h-padding-self.wave_y)
+        fade=np.clip(edge/(5.*self.wave_scale),0.,1.)
+        self.glow_band=fade*fade*(3.-2.*fade)
         frame=Image.new('RGBA',((self.width+40)*s,(self.height+40)*s))
         shadow=Image.new('RGBA',frame.size)
         ImageDraw.Draw(shadow).rounded_rectangle((20*s,26*s,(20+self.width)*s,(26+self.height)*s),radius=h/2,fill=(0,0,0,55))
@@ -203,45 +216,82 @@ class RecordingOverlay:
             return
         self.visible=False
         self.exit_from=self.motion
+        self.exit_velocity=getattr(self,'shape_velocity',0.)
         self.motion_started=time.perf_counter()
         self.motion_phase='exit'
 
-    def begin_enter(self):
-        self.amount=0.; self.level=0.
-        self.started=self.last_tick=self.motion_started=time.perf_counter()
+    def begin_enter(self, motion=None, velocity=0.):
+        self.amount=0.
+        if motion is None:
+            self.level=0.
+            self.started=time.perf_counter()
+        self.last_tick=self.motion_started=time.perf_counter()
+        self.enter_from=motion or CapsuleMotion(0.,0.,0.,span=.08)
+        self.enter_velocity=velocity
+        self.opening_delay=0. if motion is not None else .25
         self.motion_phase='enter'
-        self.motion=CapsuleMotion(0.,self.travel,0.)
+        self.shape_velocity=velocity
+        self.motion=self.enter_from
 
     def advance_motion(self, now):
-        """Short flight, braking, then glass expansion; reverse order on dismissal."""
+        """A hairline opens in place; a single reflection travels along its rim."""
         if self.motion_phase=='enter':
             p=min(1.,max(0.,(now-self.motion_started)/self.enter_duration))
-            flight=min(1.,p/.46)
-            offset=self.travel*(1.-smootherstep(flight))
-            # A small upward overshoot settles while the sphere becomes a capsule.
-            offset-=1.8*math.sin(math.pi*smootherstep((p-.38)/.62))**2
-            shape=smootherstep((p-.40)/.60)
+            start=self.enter_from
+            duration=(.84-self.opening_delay)*self.enter_duration
+            q=min(1.,max(0.,(p-self.opening_delay)/(.84-self.opening_delay)))
+            shape=start.shape+(1.-start.shape)*smootherstep(q)
+            delta,rate=velocity_tail(now-self.motion_started,self.enter_velocity,start.shape,.065/self.motion_speed)
+            shape=min(1.,max(0.,shape+delta))
+            self.shape_velocity=(1.-start.shape)*30.*q*q*(1.-q)**2/duration+rate
+            glint=min(1.,max(0.,(p-.40)/.60))
+            strength=smootherstep(glint/.16)*(1.-smootherstep((glint-.76)/.24))
+            blend=smootherstep(p/.12)
+            strength=start.glint_strength*(1.-blend)+strength*blend
+            glint=max(0.,start.glint)+(1.-max(0.,start.glint))*glint
+            opacity=start.opacity+(1.-start.opacity)*smootherstep(p/.18)
+            span=start.span+(1.-start.span)*smootherstep(p/.25)
+            gap=start.gap*(1.-smootherstep(p/.25))
             self.amount=p
-            self.motion=CapsuleMotion(shape,offset,smootherstep(p/.18))
+            self.motion=CapsuleMotion(shape,0.,opacity,span,glint,strength,gap)
             if p==1.:
                 self.motion_phase='idle'
                 self.motion=CapsuleMotion()
         elif self.motion_phase=='exit':
             p=min(1.,max(0.,(now-self.motion_started)/self.exit_duration))
             start=self.exit_from
-            shape=start.shape*(1.-smoothstep(p/.56))
-            fall=smoothstep((p-.42)/.58)
-            offset=start.offset*(1.-fall)+self.travel*fall*fall
+            q=min(1.,p/.68)
+            # Preserve velocity on early release, then brake before reversing.
+            shape=start.shape*(1.-smootherstep(q))
+            delta,rate=velocity_tail(now-self.motion_started,self.exit_velocity,1.-start.shape,.065/self.motion_speed)
+            shape+=delta
+            self.shape_velocity=-start.shape*30.*q*q*(1.-q)**2/(.68*self.exit_duration)+rate
+            shape=min(1.,max(0.,shape))
+            erasure=smootherstep((p-.66)/.34)
+            # The two surviving strokes shorten from their outer AND inner
+            # ends, rather than merely shrinking the whole line into its centre.
+            meeting=(start.span+start.gap)/2
+            span=start.span+(meeting-start.span)*erasure
+            gap=start.gap+(meeting-start.gap)*erasure
+            strength=start.glint_strength*(1.-smootherstep(p/.30))
             self.amount=1.-p
-            self.motion=CapsuleMotion(shape,offset,start.opacity*(1.-smoothstep((p-.72)/.28)))
-            if p==1.:self.motion_phase='hidden'
+            self.motion=CapsuleMotion(shape,0.,start.opacity*(1.-smootherstep((p-.72)/.28)),
+                                      span,start.glint,strength,gap)
+            if p==1.:
+                self.motion_phase='hidden'
+                self.motion=CapsuleMotion(0.,0.,0.,span=0.)
         return self.motion
+
+    @staticmethod
+    def glow_profile(distance, scale):
+        """The same soft white bloom for the opening line and the live wave."""
+        return (np.exp(-.5*(distance/(2.6*scale))**2)*46.
+                +np.exp(-.5*(distance/(7.2*scale))**2)*20.)
 
     def blur_wave(self, alpha, amp):
         """Position-dependent Gaussian softness, also feathering the line ends."""
         if amp<.01:return alpha
-        # Gaussian softness needs no subpixel detail: filter at physical size,
-        # then combine with the separately supersampled droplets and glow.
+        # Filter at physical size, then combine with the supersampled glow.
         source=alpha.resize((self.wave_size[0]//2,self.wave_size[1]//2),Image.Resampling.BOX)
         sigma=self.blur_sigma[::2]*amp/2
         radii=self.blur_radii/2
@@ -257,13 +307,13 @@ class RecordingOverlay:
         return Image.fromarray(np.uint8(out)).resize(self.wave_size,Image.Resampling.BILINEAR)
 
     def wave_mask(self, t, amp):
-        """Soft Gaussian wave with local metaballs and a faint glow."""
+        """One continuous wave, with Gaussian edges and a faint soft glow."""
         s=self.wave_scale; w,h=self.wave_size
         v=self.v; env=self.wave_envelope
         ratio=self.width/280.
         center=h/2+amp*28*s*ratio*env*np.sin(2*np.pi*(v*1.2-t*.56))
         thick=(.65*s+amp*24*s*env*(.55+.45*np.sin(np.pi*v*1.65-t*.9)**2))*ratio
-        # Fit the contour, droplets and glow together, rather than cutting peaks.
+        # Fit the contour and glow together, rather than cutting peaks.
         extent=float(np.max(np.abs(center-h/2)+thick))+8.5*s
         fit=min(1.,(h/2-self.vertical_padding*s)/extent)
         center=h/2+(center-h/2)*fit
@@ -273,33 +323,10 @@ class RecordingOverlay:
         body=np.clip(.5+distance/edge_width,0.,1.)
         body*=body*(3.-2.*body)
         soft=np.asarray(self.blur_wave(Image.fromarray(np.uint8(body*255)),amp),dtype=np.float32)/255.
-        activity=smoothstep((amp-.28)/.55)
-        if activity:
-            # Staggered droplets follow both moving edges. Nearby droplets merge
-            # through a smooth union; the outer ones form a sparse dotted fringe.
-            for index in range(34):
-                fraction=.17+.66*((index/34+t*.025)%1.)
-                x=min(w-1,round(fraction*(w-1)))
-                strength=activity*float(self.sin_envelope[x])**2
-                radius=s*(.65+1.0*(.5+.5*math.sin(index*2.4+t*2.1)))*strength
-                if radius<.22*s:continue
-                for side in (-1,1):
-                    drift=.5+.5*math.sin(index*1.71+t*2.8+side)
-                    cy=float(center[x]+side*(thick[x]+s*(.7+3.8*drift)*strength))
-                    cx=x+s*.6*math.sin(index+t+side)
-                    reach=radius+1.4*s
-                    x0=max(0,math.floor(cx-reach));x1=min(w,math.ceil(cx+reach))
-                    y0=max(0,math.floor(cy-reach));y1=min(h,math.ceil(cy+reach))
-                    if x0>=x1 or y0>=y1:continue
-                    blob=radius-np.hypot(self.wave_x[None,x0:x1]-cx,self.wave_y[y0:y1]-cy)
-                    patch=distance[y0:y1,x0:x1]
-                    bridge=np.maximum(.85*s-np.abs(patch-blob),0.)
-                    distance[y0:y1,x0:x1]=np.maximum(patch,blob)+bridge*bridge/(3.4*s)
-        # Round off the droplets as well as the wave body, preserving the fringe.
-        core=np.clip(.5+distance/edge_width,0.,1.)
-        core*=core*(3.-2.*core)
-        glow=np.clip(1.+distance/(4.2*s),0.,1.)
-        alpha=np.maximum(np.maximum(soft,core-body),glow*glow*(.10+.08*amp))
+        glow=self.glow_profile(np.maximum(0.,-distance),s)/255.
+        # Fade only the outer bloom before the safe band, keeping the original
+        # wave height and blurred body instead of clipping the new halo.
+        alpha=np.maximum(soft,glow*self.glow_band)
         return Image.fromarray(np.uint8(alpha*self.mask_values*self.safe_band*255))
 
     def render(self, t, amp):
@@ -311,19 +338,74 @@ class RecordingOverlay:
         frame.alpha_composite(white,(self.scaled(20),self.scaled(20)))
         return frame
 
-    def morph_frame(self, image, shape):
-        """Resize circular endcaps separately so the little orb stays round."""
-        if shape>=1.:return image
-        factor=(self.orb_diameter+(self.height-self.orb_diameter)*shape)/self.height
-        split=round(image.width*(self.margin+self.height/2)/(self.width+2*self.margin))
-        cap=max(1,round(split*factor))
-        middle=max(0,round((image.width-2*split)*shape))
-        height=max(1,round(image.height*factor))
-        frame=Image.new('RGBA',(2*cap+middle,height))
-        frame.paste(image.crop((0,0,split,image.height)).resize((cap,height),Image.Resampling.LANCZOS),(0,0))
-        if middle:
-            frame.paste(image.crop((split,0,image.width-split,image.height)).resize((middle,height),Image.Resampling.LANCZOS),(cap,0))
-        frame.paste(image.crop((image.width-split,0,image.width,image.height)).resize((cap,height),Image.Resampling.LANCZOS),(cap+middle,0))
+    def motion_geometry(self, size):
+        """Small physical-pixel masks, reused throughout each appearance."""
+        cached=getattr(self,'_motion_geometry',None)
+        if cached is not None and cached[0]==size:
+            return cached[1:]
+        w,h=size;s=self.display_scale
+        x=np.arange(w,dtype=np.float32)[None,:]+.5-w/2
+        y=np.arange(h,dtype=np.float32)[:,None]+.5-h/2
+        radius=self.scaled(self.height)/2
+        straight=(self.scaled(self.width)-self.scaled(self.height))/2
+        distance=np.hypot(np.maximum(np.abs(x)-straight,0.),y)-radius
+        rim=np.exp(-.5*(distance/(.70*s))**2)
+        halo=np.exp(-.5*(distance/(2.0*s))**2)
+        # Keep the reflection on the upper-left arc and upper rim. The lower
+        # edge must not light up in parallel with it.
+        upper=np.clip(-y/radius,0.,1.)**1.5
+        rim=(rim*220.+halo*18.)*upper
+        # Integrate a subpixel Gaussian over each pixel. The thin initial line
+        # stays equally bright even when its centre falls between pixel rows.
+        sigma=.42*s
+        erf=np.vectorize(math.erf,otypes=[np.float32])
+        line=(erf((y+.5)/(math.sqrt(2)*sigma))-erf((y-.5)/(math.sqrt(2)*sigma)))*.5
+        # Visible, soft white bloom around a fine core; the broad layer stays
+        # faint rather than increasing the thickness of the bright line.
+        line=line*220.+self.glow_profile(y,s)
+        self._motion_geometry=(size,x,rim,line)
+        return x,rim,line
+
+    def morph_frame(self, image, motion):
+        """Open a slit vertically on a fixed canvas, with no integer-size steps."""
+        shape=motion.shape
+        if shape>=1. and motion.glint_strength<=0. and motion.span>=1.:
+            return image
+        x,rim,line=self.motion_geometry(image.size)
+        if shape<.20:
+            half=self.scaled(self.width)*.49
+            feather=4.*self.display_scale
+            taper=np.clip((half*motion.span-np.abs(x))/feather,0.,1.)
+            taper=taper*taper*(3.-2.*taper)
+            centre=np.clip((np.abs(x)-half*motion.gap+feather)/feather,0.,1.)
+            centre=centre*centre*(3.-2.*centre)
+            line_mask=taper*centre
+        frame=image
+        if motion.glint_strength>0.:
+            # One reflection starts on the upper-left curve and crosses the top.
+            centre=(motion.glint*1.10-.55)*self.scaled(self.width)
+            sweep=np.exp(-.5*((x-centre)/(15.*self.display_scale))**2)
+            alpha=np.uint8(np.clip(rim*sweep*motion.glint_strength,0,255))
+            light=Image.new('RGBA',image.size,(242,248,255,0))
+            light.putalpha(Image.fromarray(alpha))
+            frame=Image.alpha_composite(frame,light)
+        if shape<1.:
+            factor=(1.25+(self.height-1.25)*shape)/self.height
+            cy=image.height/2
+            # Premultiplied alpha avoids dark/coloured fringes. Fractional affine
+            # sampling keeps the opening and centre stable at every DPI.
+            frame=frame.convert('RGBa').transform(image.size,Image.Transform.AFFINE,
+                    (1.,0.,0.,0.,1./factor,cy-cy/factor),Image.Resampling.BILINEAR).convert('RGBA')
+            glass=smootherstep(shape/.09)
+            if glass<1.:
+                frame.putalpha(frame.getchannel('A').point(lambda a:round(a*glass)))
+            strength=1.-smootherstep(shape/.20)
+            if strength>0.:
+                brightness=.82+.18*np.exp(-.5*(x/(half*.38))**2)
+                alpha=np.uint8(np.clip(line*brightness*line_mask*strength,0,255))
+                light=Image.new('RGBA',image.size,(255,255,255,0))
+                light.putalpha(Image.fromarray(alpha))
+                frame=Image.alpha_composite(frame,light)
         return frame
 
     def frame_position(self, image):
@@ -331,7 +413,7 @@ class RecordingOverlay:
                 round(self.y+self.scaled(self.height)/2-image.height/2+self.motion.offset*self.display_scale))
 
     def clip_to_work_area(self, image, position):
-        """Let the orb emerge from behind any taskbar, including its shadow."""
+        """Keep the capsule and its shadow within the monitor's work area."""
         x,y=position;left,top,right,bottom=self.work_area
         x0=max(0,left-x);y0=max(0,top-y)
         x1=min(image.width,right-x);y1=min(image.height,bottom-y)
@@ -343,6 +425,9 @@ class RecordingOverlay:
 
     @physical_pixels()
     def present(self, image, opacity):
+        if opacity<=0.:
+            u.ShowWindow(self.hwnd,0)
+            return
         x,y=self.frame_position(image)
         image=self.clip_to_work_area(image,(x,y))
         if image is None:
@@ -386,7 +471,7 @@ class RecordingOverlay:
         if self.level<.008: self.level=0.
         try:
             image=self.render(now-self.started,self.level*motion.shape**2)
-            self.present(self.morph_frame(image,motion.shape),motion.opacity)
+            self.present(self.morph_frame(image,motion),motion.opacity)
         except Exception:
             self.visible=False; self.amount=0.; self.motion_phase='hidden'
             u.ShowWindow(self.hwnd,0); return

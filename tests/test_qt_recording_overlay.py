@@ -123,7 +123,9 @@ class QtCapsuleTests(unittest.TestCase):
             self.wait_for(lambda:capsule.amount==1. and len(frames)>=5)
             self.assertTrue(capsule.visible)
             self.assertEqual(frames[-1][0].size,(301,173))
-            self.assertLess(frames[0][0].width,frames[-1][0].width/3)
+            self.assertEqual(frames[0][0].size,frames[-1][0].size)
+            core=frames[0][0].getchannel('A').point(lambda a:255 if a>=100 else 0).getbbox()
+            self.assertLessEqual(core[3]-core[1],4)
             self.assertTrue(all(identifier!=main_thread for identifier in render_threads))
             self.assertTrue(all(identifier!=main_thread for identifier in self.capture_threads))
             self.assertTrue(all(identifier==main_thread for identifier in present_threads))
@@ -164,19 +166,24 @@ class QtCapsuleTests(unittest.TestCase):
         self.assertEqual(capsule.amount,0.)
         self.assertIsNone(capsule.job)
 
-    def test_restart_during_exit_starts_a_fresh_entrance(self):
+    def test_restart_during_exit_reverses_without_hiding_or_recapturing(self):
         capsule=self.capsule()
         capsule.present=Mock()
         capsule.show(999)
         self.wait_for(lambda:capsule.amount==1.)
         capsule.hide()
         self.pump(30)
+        before=capsule.motion
+        self.show.reset_mock()
         capsule.show(999)
+        self.assertIs(capsule.enter_from,before)
+        self.assertAlmostEqual(capsule.motion.shape,before.shape,delta=.01)
+        self.show.assert_not_called()
         self.wait_for(lambda:capsule.motion_phase=='idle')
         self.assertTrue(capsule.visible)
         self.assertEqual(capsule.motion.shape,1.)
         self.assertEqual(capsule.amount,1.)
-        self.assertEqual(self.capture.call_count,2)
+        self.assertEqual(self.capture.call_count,1)
 
     def test_restart_on_another_monitor_recaptures_new_physical_bounds(self):
         capsule=self.capsule()
@@ -189,13 +196,32 @@ class QtCapsuleTests(unittest.TestCase):
         def get_info(handle,pointer):
             ctypes.memmove(pointer,ctypes.byref(info),ctypes.sizeof(info))
             return True
-        with patch.object(overlay.u,'GetMonitorInfoW',side_effect=get_info):
-            capsule.show(456)
+        capsule.hide()
+        with patch.object(overlay.u,'GetMonitorInfoW',side_effect=get_info), \
+             patch.object(overlay.u,'MonitorFromWindow',return_value=8):
+            capsule.show(999)
             self.wait_for(lambda:capsule.motion_phase=='idle')
         self.assertLess(capsule.x,0)
         self.assertEqual(capsule.work_area,(-1920,0,0,1032))
         self.capture.assert_called_with(capsule.x,capsule.y,capsule.scaled(234),capsule.scaled(117))
         self.assertEqual(self.capture.call_count,2)
+
+    def test_restart_while_line_is_erasing_preserves_its_central_gap(self):
+        capsule=self.capsule()
+        capsule.present=Mock()
+        capsule.show(999)
+        self.wait_for(lambda:capsule.motion_phase=='idle')
+        capsule.hide()
+        self.wait_for(lambda:capsule.motion.gap>.08)
+        before=capsule.motion
+        self.show.reset_mock()
+        capsule.show(999)
+        self.assertIs(capsule.enter_from,before)
+        self.assertAlmostEqual(capsule.motion.gap,before.gap,delta=.01)
+        self.show.assert_not_called()
+        self.wait_for(lambda:capsule.motion_phase=='idle')
+        self.assertEqual(capsule.motion.gap,0.)
+        self.capture.assert_called_once()
 
     def test_frame_queue_is_bounded_when_worker_is_slow(self):
         capsule=self.capsule()

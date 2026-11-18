@@ -80,6 +80,7 @@ class QtRecordingOverlay(RecordingOverlay):
         if not u.GetMonitorInfoW(monitor, ctypes.byref(info)):
             raise ctypes.WinError(ctypes.get_last_error())
         self.configure_monitor(info)
+        self._monitor = monitor
         canvas = RecordingOverlay.__new__(RecordingOverlay)
         canvas.display_scale, canvas.scale = self.display_scale, self.scale
         # Freeze this recording's physical bounds before another show can move us.
@@ -97,6 +98,18 @@ class QtRecordingOverlay(RecordingOverlay):
     def show(self, target=None):
         if self.closed:
             return
+        if (self.motion_phase=='exit' and target==getattr(self,'_target',None)
+                and self._canvas is not None
+                and u.MonitorFromWindow(target or self.root.winfo_id(),2)==self._monitor):
+            if self.job is not None:
+                self.root.after_cancel(self.job)
+                self.job=None
+            # A quick second press reverses the live aperture without a blank
+            # frame, a second backdrop capture, or a discontinuity in the wave.
+            self.visible=True
+            self.begin_enter(self.motion,self.shape_velocity)
+            self.tick()
+            return
         if self.job is not None:
             self.root.after_cancel(self.job)
             self.job = None
@@ -105,6 +118,7 @@ class QtRecordingOverlay(RecordingOverlay):
                 future.cancel()
         self._rendering = None
         self._canvas = self._frame = None
+        self._target = target
         # Keep an old fading frame from reappearing at a new monitor position.
         u.ShowWindow(self.hwnd, 0)
         self.prepare(target)
