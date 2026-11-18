@@ -2,9 +2,6 @@ name: Windows release
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [.github/workflows/release.yml]
 
 permissions:
   contents: write
@@ -41,6 +38,13 @@ jobs:
           download(Path('outputs/Transcriber/models'), 'parakeet', threading.Event(), lambda *args: None)
       - name: Build portable archive
         run: python scripts/build_runtime_portable.py
+      - name: Build online setup
+        shell: python
+        run: |
+          import subprocess, sys
+          from pathlib import Path
+          archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-runtime.zip'))
+          subprocess.run([sys.executable, 'scripts/build_online_setup.py', str(archive)], check=True)
       - name: Scan distribution with Microsoft Defender
         run: |
           $version = python -c "import sys; sys.path.insert(0, 'scripts'); from build_windows import version; print(version())"
@@ -48,6 +52,8 @@ jobs:
           $scanner = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
           $bundle = Join-Path $env:GITHUB_WORKSPACE "work/runtime-dist-$version/VoxPad"
           & $scanner -Scan -ScanType 3 -File $bundle -ReturnHR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $scanner -Scan -ScanType 3 -File "$env:GITHUB_WORKSPACE\outputs\VoxPad-$version-Setup-x64.exe" -ReturnHR
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify portable runtime and checksum
         shell: python
@@ -72,12 +78,5 @@ jobs:
           $tag = "v$version"
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) { Write-Output "Release $tag already exists; keeping its assets."; exit 0 }
-          @"
-          VoxPad for Windows 10/11 x64.
-
-          Extract the entire ZIP, then open VoxPad/VoxPad.cmd. Python, native libraries and the Parakeet model are included. Dictation runs locally on CPU without an internet connection. Whisper and GigaAM are optional downloads in Settings.
-
-          Keep runtime, app, models and launch.py next to VoxPad.cmd. User settings and history are stored in data. Preserve data and additional models when updating. The app uses a private Python runtime and readable source modules.
-          "@ | Set-Content release-notes.txt -Encoding utf8
-          gh release create $tag "outputs/VoxPad-$version-Windows-x64-runtime.zip" "outputs/VoxPad-$version-Windows-x64-runtime.zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "VoxPad $version" --notes-file release-notes.txt
+          gh release create $tag "outputs/VoxPad-$version-Setup-x64.exe" "outputs/VoxPad-$version-Setup-x64.exe.sha256" "outputs/VoxPad-$version-Windows-x64-runtime.zip" "outputs/VoxPad-$version-Windows-x64-runtime.zip.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "VoxPad $version" --notes-file "docs/releases/$version.md"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

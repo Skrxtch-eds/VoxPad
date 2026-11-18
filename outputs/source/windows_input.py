@@ -2,6 +2,7 @@
 import ctypes
 from ctypes import wintypes
 import threading
+import time
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -16,6 +17,17 @@ user32.UnhookWindowsHookEx.argtypes = (wintypes.HANDLE,)
 user32.GetForegroundWindow.restype = wintypes.HWND
 kernel32.GetModuleHandleW.argtypes = (wintypes.LPCWSTR,)
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+kernel32.GetTickCount64.restype = ctypes.c_ulonglong
+
+
+def input_timing(key_time, received_ns):
+    # KBDLLHOOKSTRUCT.time and GetTickCount share a wrapping millisecond clock.
+    # This includes Windows delivery time, but cannot measure a physical switch.
+    delay_ms = ((kernel32.GetTickCount64() & 0xffffffff) - key_time) & 0xffffffff
+    timing = {'hook_received_ns': received_ns}
+    if delay_ms < 60000:
+        timing['input_event_ns'] = received_ns - delay_ms * 1_000_000
+    return timing
 
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
@@ -41,6 +53,7 @@ class Hotkey:
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def _callback(self, code, message, address):
+        received_ns = time.perf_counter_ns()
         if code >= 0:
             key = ctypes.cast(address, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
             if key.flags & 0x10:
@@ -75,11 +88,13 @@ class Hotkey:
                     consumed=True; self.swallowed.add(vk)
                     if not repeated and (action!=self.active_action or not self.held):
                         self.active_action=action; self.active_chord=chord; self.held=True
-                        self.events.put(('shortcut',{'action':action,'phase':'press','target':user32.GetForegroundWindow()}))
+                        self.events.put(('shortcut',{'action':action,'phase':'press','target':user32.GetForegroundWindow(),
+                                                    **input_timing(key.time, received_ns)}))
             if up:
                 consumed=vk in self.swallowed; self.swallowed.discard(vk)
                 if self.held and vk in self.active_chord:
-                    self.events.put(('shortcut',{'action':self.active_action,'phase':'release','target':None}))
+                    self.events.put(('shortcut',{'action':self.active_action,'phase':'release','target':None,
+                                                **input_timing(key.time, received_ns)}))
                     self.held=False; self.active_action=None; self.active_chord=frozenset()
             if consumed: return 1
         return user32.CallNextHookEx(self.hook, code, message, address)
@@ -185,13 +200,3 @@ def paste_if_focused(target):
         item.type = 1
         item.ki = KEYBDINPUT(key, 0, flags, 0, 0)
     return user32.SendInput(4, events, ctypes.sizeof(INPUT)) == 4
-
-def press_enter_if_focused(target):
-    if not target or user32.GetForegroundWindow()!=target:
-        return False
-    if any(user32.GetAsyncKeyState(k)&0x8000 for k in (0x10,0x11,0x12,0x5B,0x5C)):
-        return False
-    events=(INPUT*2)()
-    for item,flags in zip(events,(0,2)):
-        item.type=1; item.ki=KEYBDINPUT(0x0D,0,flags,0,0)
-    return user32.SendInput(2,events,ctypes.sizeof(INPUT))==2

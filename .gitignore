@@ -3,8 +3,10 @@
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/design-qa.md
 !/requirements.txt
 !/requirements-build.txt
+!/requirements-dev.txt
 !/run.bat
 !/scripts/
 !/tests/

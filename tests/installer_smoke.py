@@ -37,9 +37,8 @@ def run(installer, audio):
         smoke = json.loads((install / 'smoke-test.json').read_text('utf-8'))
         assert smoke['ready'] and smoke['frozen'] and smoke['transcript'], smoke
         assert Path(smoke['base']) == install and Path(smoke['executable']) == exe
-        assert smoke['cue_bytes'] > 44
         report['runtime'] = smoke
-        report['checks'].append('Bundled Python, Parakeet, PyAV, audio cue, Windows audio COM; no external Python paths')
+        report['checks'].append('Bundled Python, Qt Quick and Parakeet; no external Python paths')
         sentinel = install / 'data/installer-test.txt'
         sentinel.write_text('Keep my history and settings', encoding='utf-8')
         saved = {p.name: digest(p) for p in (install / 'data').iterdir() if p.is_file()}

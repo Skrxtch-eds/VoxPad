@@ -11,9 +11,9 @@ import zipfile
 
 from build_windows import ROOT,SOURCE,MODEL_FOLDER,MODEL_FILES,version,notices,checksum
 
-PACKAGES=('numpy','scipy','Pillow','sherpa-onnx','sherpa-onnx-core','sounddevice','soundfile','av',
-          'pystray','pycaw','comtypes','cffi','pycparser','typing_extensions','psutil','six')
-SKIP={'__pycache__','tests','test'}
+PACKAGES=('numpy','scipy','Pillow','sherpa-onnx','sherpa-onnx-core','sounddevice','soundfile',
+          'cffi','pycparser','typing_extensions','PySide6-Essentials','shiboken6')
+SKIP={'__pycache__','tests','test','tkinter','turtledemo'}
 
 
 def package_files():
@@ -41,6 +41,7 @@ def copy_tree(source,target):
     for path in source.rglob('*'):
         relative=path.relative_to(source)
         if any(part in SKIP or part in ('site-packages','idlelib','ensurepip') for part in relative.parts):continue
+        if path.name in ('turtle.py','_tkinter.pyd'):continue
         if path.is_file() and path.suffix not in ('.pyc','.pyo'):
             destination=target/relative;destination.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(path,destination)
@@ -58,7 +59,7 @@ def build(args):
     # Copy the original executables and DLLs verbatim, retaining their signatures.
     for name in ('python.exe','pythonw.exe','python3.dll','python312.dll','vcruntime140.dll','vcruntime140_1.dll','LICENSE.txt'):
         shutil.copy2(base/name,runtime/name)
-    for name in ('Lib','DLLs','tcl'):copy_tree(base/name,runtime/name)
+    for name in ('Lib','DLLs'):copy_tree(base/name,runtime/name)
     for relative,path in files.items():
         destination=runtime/'Lib/site-packages'/relative
         destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,destination)
@@ -67,7 +68,10 @@ def build(args):
     app=bundle/'app';app.mkdir()
     for path in SOURCE.glob('*.py'):shutil.copy2(path,app/path.name)
     shutil.copytree(SOURCE/'assets',app/'assets')
+    shutil.copytree(SOURCE/'qml',app/'qml')
     shutil.copy2(ROOT/'scripts/runtime_bootstrap.py',bundle/'launch.py')
+    from build_online_setup import launcher
+    launcher(bundle)
     (bundle/'VoxPad.cmd').write_bytes(b'@echo off\r\nstart "" "%~dp0runtime\\pythonw.exe" -I "%~dp0launch.py" %*\r\n')
     (bundle/'VoxPad-debug.cmd').write_bytes(b'@echo off\r\n"%~dp0runtime\\python.exe" -I "%~dp0launch.py" %*\r\nif errorlevel 1 pause\r\n')
     model=Path(args.model_dir) if args.model_dir else ROOT/'outputs/Transcriber/models'/MODEL_FOLDER
@@ -80,11 +84,11 @@ def build(args):
         'VoxPad '+release+' — Windows 10/11 x64\n\n'
         '1. Закройте старый VoxPad через значок в трее.\n'
         '2. Извлеките всю папку VoxPad из ZIP.\n'
-        '3. Откройте VoxPad.cmd. Python и установка не нужны.\n\n'
+        '3. Откройте VoxPad.exe. Python и установка не нужны.\n\n'
         'В этой сборке используется отдельный Python и открытые файлы приложения.\n'
         'Папки runtime, app и models должны оставаться рядом с VoxPad.cmd.\n'
         'Настройки и история хранятся в data. Для переноса скопируйте data из старой версии.\n'
-        'Дополнительные модели можно перенести в models.\n'
+        'Используется только Parakeet TDT 0.6B v3 INT8.\n'
         'При ошибке запуска используйте VoxPad-debug.cmd; подробности — data/startup-error.log.\n'
         'Не отключайте антивирус и не добавляйте исключения для запуска программы.\n',encoding='utf-8-sig')
     for path in bundle.rglob('*'):

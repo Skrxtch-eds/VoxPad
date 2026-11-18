@@ -4,10 +4,10 @@ from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH).parent
 source = root / 'outputs/source'
-datas = [(str(source / 'assets'), 'assets')]
+datas = [(str(source / 'assets'), 'assets'), (str(source / 'qml'), 'qml')]
 binaries = []
-hiddenimports = ['pystray._win32']
-for package in ('sherpa_onnx', 'av', '_sounddevice_data', 'pycaw', 'comtypes'):
+hiddenimports = []
+for package in ('sherpa_onnx', '_sounddevice_data'):
     data, binary, hidden = collect_all(package, include_py_files=False,
                                       filter_submodules=lambda name: '.test' not in name,
                                       exclude_datas=['**/test/**', '**/tests/**'])
@@ -17,7 +17,7 @@ for package in ('sherpa_onnx', 'av', '_sounddevice_data', 'pycaw', 'comtypes'):
 
 a = Analysis([str(source / 'app.py')], pathex=[str(source)],
              binaries=binaries, datas=datas, hiddenimports=hiddenimports,
-             excludes=['matplotlib', 'pandas', 'IPython', 'pytest'], noarchive=False)
+             excludes=['matplotlib', 'pandas', 'IPython', 'pytest', 'tkinter', 'pystray'], noarchive=False)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='VoxPad',
           debug=False, strip=False, upx=False, console=False,

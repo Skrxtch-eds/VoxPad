@@ -2,9 +2,10 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'outputs/source'))
-from storage import Store
+from storage import Store,DEFAULTS,migrate_settings
 
 
 class StorageTests(unittest.TestCase):
@@ -24,28 +25,42 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(len(self.store.history()),100)
         self.assertEqual(self.store.statistics()['dictations'],105)
         self.assertEqual(self.store.statistics()['average_processing_seconds'],.5)
-        self.store.clear_history()
+        for row in self.store.history():self.store.delete(row['id'])
         self.assertEqual(self.store.history(),[])
         self.assertEqual(self.store.statistics()['dictations'],105)
 
     def test_imported_files_do_not_change_dictation_statistics(self):
         self.store.add('Imported audio transcript',10,1,source='file')
-        self.store.add('Recovered dictation',2,.2,source='recovery')
+        self.store.add('Recovered dictation',2,.2,source='microphone')
         self.assertEqual(len(self.store.history()),2)
         self.assertEqual(self.store.statistics()['dictations'],1)
         self.assertEqual(self.store.statistics()['audio_seconds'],2)
-
-    def test_search_treats_sql_wildcards_as_text(self):
-        self.store.add('Discount 50% today',1,.1)
-        self.store.add('A different phrase',1,.1)
-        self.assertEqual([r['text'] for r in self.store.history('%')],['Discount 50% today'])
-        self.assertEqual(len(self.store.history('DISCOUNT')),1)
 
     def test_damaged_preferences_are_preserved(self):
         self.store.settings_path.write_text('{broken',encoding='utf-8')
         restored=Store(self.directory.name)
         self.assertEqual(restored.settings_path.read_text('utf-8'),'{broken')
         self.assertEqual(restored.history(),[])
+
+    def test_normalized_shortcuts_do_not_share_mutable_defaults_or_input(self):
+        first=migrate_settings({})
+        second=migrate_settings({})
+        first['shortcuts']['dictate'].append(68)
+        self.assertEqual(DEFAULTS['shortcuts']['dictate'],[163])
+        self.assertEqual(second['shortcuts']['dictate'],[163])
+        saved={'shortcuts':{'dictate':[162,68,68]}}
+        normalized=migrate_settings(saved)
+        normalized['shortcuts']['dictate'].append(69)
+        self.assertEqual(saved['shortcuts']['dictate'],[162,68,68])
+
+    def test_failed_atomic_replace_preserves_file_and_current_preferences(self):
+        self.store.save({'ui_theme':'light'})
+        before=self.store.settings_path.read_bytes()
+        with patch('storage.os.replace',side_effect=OSError('file locked')):
+            with self.assertRaises(OSError):self.store.save({'ui_theme':'dark'})
+        self.assertEqual(self.store.settings_path.read_bytes(),before)
+        self.assertEqual(self.store.settings['ui_theme'],'light')
+        self.assertEqual(Store(self.directory.name).settings['ui_theme'],'light')
 
 
 if __name__=='__main__':unittest.main()

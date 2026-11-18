@@ -29,19 +29,20 @@ class TranscriptSpellingTests(unittest.TestCase):
         self.assertEqual(text,'Ёжик ещё живёт.')
         self.assertGreaterEqual(seconds,0)
         engine.recognizer.decode_stream.assert_called_once_with(stream)
-        self.assertEqual(format_ending(text,'period_space'),('Ёжик ещё живёт. ',False))
+        self.assertEqual(format_ending(text),'Ёжик ещё живёт. ')
 
-    def test_parakeet_unknown_in_russian_words_and_isolated_letter(self):
+    def test_parakeet_unknown_in_russian_words(self):
         for original,expected in (
-            ('<unk>жик.','Ёжик.'),('<unk>','Ё'),('Вот <unk>лка, вс<unk> ещ<unk> впереди.','Вот ёлка, всё ещё впереди.'),
+            ('<unk>жик.','Ёжик.'),('Вот <unk>лка, вс<unk> ещ<unk> впереди.','Вот ёлка, всё ещё впереди.'),
             ('ВС<unk> И <unk>ЛКА','ВСЁ И ЁЛКА'),('Первое. «<unk>жик»','Первое. «Ёжик»'),
             ('Алло, при<unk>м!','Алло, приём!')):
             with self.subTest(original=original):
                 self.assertEqual(normalize_transcript(original),expected)
 
-    def test_unknown_uses_the_same_fallback_in_other_languages(self):
-        for original in ('Hello <unk>.','abc<unk>def','Café<unk>','שלום<unk>'):
-            self.assertEqual(normalize_transcript(original),original.replace('<unk>','ё'))
+    def test_unknown_does_not_invent_russian_letters_in_other_languages_or_quotes(self):
+        for original in ('<unk>','Hello <unk>.','abc<unk>def','Café<unk>','שלום<unk>',
+                         '<unk>Привет<unk>', 'Проверь Git<unk>Hub и ONNX <unk>.'):
+            self.assertEqual(normalize_transcript(original),original)
 
     def test_parakeet_engine_repairs_decoder_marker_before_any_consumer(self):
         engine=Engine.__new__(Engine);engine.recognizer=Mock()

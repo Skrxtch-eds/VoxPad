@@ -1,4 +1,4 @@
-"""User-provided cues; volume changes only these sounds, never system volume."""
+"""Original soft glass cues; volume changes these sounds, never system volume."""
 import io
 from pathlib import Path
 import threading
@@ -11,17 +11,17 @@ class AudioCues:
     def __init__(self):
         self.cache={}
         self.directory=Path(__file__).resolve().parent/'assets'
+        # The app uses 50% volume. Decode and scale both short cues during
+        # startup, so the first press has no file I/O or PCM conversion to await.
+        for kind in ('start','stop'):
+            try:self.wav_bytes(kind,50)
+            except (OSError,RuntimeError):pass
 
     def wav_bytes(self,kind,volume):
         volume=max(0,min(100,int(round(volume))))
         key=kind,volume
         if key in self.cache: return self.cache[key]
-        if kind in ('start','stop'):
-            audio,rate=sf.read(self.directory/f'record-{kind}.wav',dtype='float32',always_2d=True)
-        else:
-            rate=44100
-            t=np.arange(int(rate*.09))/rate
-            audio=(.15*np.sin(2*np.pi*350*t)*np.sin(np.pi*np.arange(len(t))/len(t))**2)[:,None]
+        audio,rate=sf.read(self.directory/f'record-{kind}.wav',dtype='float32',always_2d=True)
         pcm=np.int16(np.clip(audio*(volume/100),-1,1)*32767)
         stream=io.BytesIO()
         with wave.open(stream,'wb') as wav:

@@ -17,7 +17,7 @@ MODEL_FILES = ('encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'to
 
 
 def version():
-    module = ast.parse((SOURCE / 'app_features.py').read_text('utf-8-sig'))
+    module = ast.parse((SOURCE / 'app.py').read_text('utf-8-sig'))
     return next(ast.literal_eval(node.value) for node in module.body
                 if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'VERSION' for t in node.targets))
 
@@ -26,17 +26,19 @@ def notices(bundle):
     target = bundle / 'licenses'
     target.mkdir(exist_ok=True)
     packages = ('numpy', 'scipy', 'Pillow', 'sherpa-onnx', 'sherpa-onnx-core',
-                'sounddevice', 'soundfile', 'av', 'pystray', 'pycaw', 'comtypes',
-                'cffi', 'pycparser', 'typing_extensions', 'psutil', 'six')
+                'sounddevice', 'soundfile',
+                'cffi', 'pycparser', 'typing_extensions', 'PySide6-Essentials', 'shiboken6')
     lines = ['VoxPad: third-party components', '',
              'Parakeet TDT 0.6B v3 — NVIDIA, CC BY 4.0.',
              'Original weights: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3',
              'ONNX conversion / int8 quantization: sherpa-onnx contributors.',
              'https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models',
              'See licenses/parakeet-model-LICENSE.txt. No endorsement is implied.', '',
-             'Python, Tcl/Tk and native library notices are also included in _internal.', '']
+             'Python and native library notices are also included.', '']
     shutil.copy2(ROOT / 'docs/licenses/parakeet-model-LICENSE.txt', target)
     for license_file in (ROOT / 'docs/licenses').glob('native-*'):
+        shutil.copy2(license_file, target / license_file.name)
+    for license_file in (SOURCE / 'assets/icons').glob('*.txt'):
         shutil.copy2(license_file, target / license_file.name)
     python_license = Path(sys.base_prefix) / 'LICENSE.txt'
     if not python_license.is_file():

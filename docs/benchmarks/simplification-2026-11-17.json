@@ -1,0 +1,92 @@
+{
+  "date": "2026-11-17",
+  "base": "accelerated working tree before simplification",
+  "unit_tests": 79,
+  "gui_checks": [
+    "ui_smoke.py",
+    "recording_smoke.py",
+    "ui_regression.py"
+  ],
+  "public_audio_clips": 6,
+  "repeats_per_clip": 2,
+  "transcript_hashes_match_previous_accelerated_report": true,
+  "cpu_profile": "125h_pcores_no_spin",
+  "asr_summary": {
+    "russian_4.76s": {
+      "latency_p50_seconds": 0.28912175000004936,
+      "latency_p95_seconds": 0.300648094999633,
+      "inference_p50_seconds": 0.28296255000000003,
+      "decode_p50_seconds": 0.28911650000009104,
+      "cpu_core_percent_mean": 259.00778832582523,
+      "rtf_p50": 0.06073876050422081,
+      "stable_text": true,
+      "wer": 0.1,
+      "cer": 0.017241379310344827
+    },
+    "english_3.845s": {
+      "latency_p50_seconds": 0.23752840000088327,
+      "latency_p95_seconds": 0.24250774000101954,
+      "inference_p50_seconds": 0.23134335,
+      "decode_p50_seconds": 0.2375195500007976,
+      "cpu_core_percent_mean": 234.34133960148876,
+      "rtf_p50": 0.061772276283773034,
+      "stable_text": true,
+      "wer": 0.0,
+      "cer": 0.0
+    },
+    "noisy_english_2.5s": {
+      "latency_p50_seconds": 0.16428930000074615,
+      "latency_p95_seconds": 0.1658924700002899,
+      "inference_p50_seconds": 0.16099154999999998,
+      "decode_p50_seconds": 0.164285849999942,
+      "cpu_core_percent_mean": 261.9349137316232,
+      "rtf_p50": 0.0657143399999768,
+      "stable_text": true,
+      "wer": null,
+      "cer": null
+    },
+    "noisy_english_5s": {
+      "latency_p50_seconds": 0.2797248999995645,
+      "latency_p95_seconds": 0.2817188500001066,
+      "inference_p50_seconds": 0.27322219999999997,
+      "decode_p50_seconds": 0.27972179999778746,
+      "cpu_core_percent_mean": 270.81987903200366,
+      "rtf_p50": 0.05594435999955749,
+      "stable_text": true,
+      "wer": null,
+      "cer": null
+    },
+    "noisy_english_8s": {
+      "latency_p50_seconds": 0.4318375000002561,
+      "latency_p95_seconds": 0.43970251000027927,
+      "inference_p50_seconds": 0.42153165000000004,
+      "decode_p50_seconds": 0.4318341500002134,
+      "cpu_core_percent_mean": 293.4188172961227,
+      "rtf_p50": 0.05397926875002668,
+      "stable_text": true,
+      "wer": null,
+      "cer": null
+    },
+    "noisy_english_13s": {
+      "latency_p50_seconds": 0.7131776999995054,
+      "latency_p95_seconds": 0.730560029998378,
+      "inference_p50_seconds": 0.69708325,
+      "decode_p50_seconds": 0.7131745500009856,
+      "cpu_core_percent_mean": 263.33828630658076,
+      "rtf_p50": 0.05485958076930658,
+      "stable_text": true,
+      "wer": null,
+      "cer": null
+    }
+  },
+  "slow_sqlite": {
+    "disk_delay_seconds": 0.2,
+    "repeats": 7,
+    "latency_p50_ms": 1.271099998120917,
+    "latency_p95_ms": 1.413779999347753,
+    "history_p50_ms": 210.04270000048564
+  },
+  "physical_microphone_and_visible_external_paste_tested": false,
+  "full_model_redownload_tested": false,
+  "pinned_tokens_network_verified": true
+}

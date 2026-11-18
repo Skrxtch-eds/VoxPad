@@ -1,0 +1,5 @@
+-r requirements.txt
+# Optional local ASR performance measurements.
+psutil==7.2.2
+qtawesome==1.4.2
+vtracer==0.6.12

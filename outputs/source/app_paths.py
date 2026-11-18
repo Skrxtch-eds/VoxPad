@@ -10,3 +10,4 @@ def application_root():
 
 
 BASE=application_root()
+DATA=Path(getattr(sys, '_voxpad_data_root', BASE/'data'))

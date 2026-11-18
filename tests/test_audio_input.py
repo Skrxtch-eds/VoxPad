@@ -78,7 +78,7 @@ class AudioInputTests(unittest.TestCase):
             entered.set();release.wait(2);return stream,48000,key
         def take():
             taken.append(self.input.take(4));finished.set()
-        with patch.object(self.input,'_open',side_effect=open_stream) as factory:
+        with patch.object(self.input,'open',side_effect=open_stream) as factory:
             self.input.prepare(4);self.assertTrue(entered.wait(2))
             taker=threading.Thread(target=take);taker.start()
             self.assertFalse(finished.wait(.02))
@@ -96,12 +96,41 @@ class AudioInputTests(unittest.TestCase):
             try:self.input.take(4)
             except RuntimeError as error:errors.append(str(error))
             finally:finished.set()
-        with patch.object(self.input,'_open',side_effect=open_stream):
+        with patch.object(self.input,'open',side_effect=open_stream):
             self.input.prepare(4);self.assertTrue(entered.wait(2))
             taker=threading.Thread(target=take);taker.start()
             self.input.close();self.assertTrue(finished.wait(2));taker.join()
             release.set();wait_for(lambda:stream.close.called)
         self.assertEqual(len(errors),1)
+
+    def test_direct_opens_still_serialize_driver_access(self):
+        first,second,release=threading.Event(),threading.Event(),threading.Event()
+        self.addCleanup(release.set)
+        opened=[];errors=[];calls=[]
+        def factory(**options):
+            calls.append(options)
+            if len(calls)==1:
+                first.set()
+                if not release.wait(2):raise RuntimeError('driver wait timed out')
+            else:second.set()
+            return Mock()
+        def open_stream():
+            try:opened.append(self.input.open(4))
+            except Exception as error:errors.append(error)
+        with patch('audio_input.sd.query_devices',return_value={'default_samplerate':48000}), \
+             patch('audio_input.sd.InputStream',side_effect=factory):
+            one=threading.Thread(target=open_stream);two=threading.Thread(target=open_stream)
+            try:
+                one.start();self.assertTrue(first.wait(1))
+                two.start();self.assertFalse(second.wait(.03))
+            finally:
+                release.set()
+                one.join(2)
+                if two.ident is not None:two.join(2)
+        self.assertFalse(errors)
+        self.assertEqual(len(opened),2)
+        self.assertTrue(second.is_set())
+        for stream,rate,key in opened:self.input.dispose(stream)
 
 
 if __name__=='__main__':unittest.main()

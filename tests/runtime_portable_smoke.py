@@ -17,7 +17,7 @@ def run(archive,audio,session_check=True):
         with zipfile.ZipFile(archive) as package:
             assert all((target/name).resolve().is_relative_to(target.resolve()) for name in package.namelist())
             assert not any(name.startswith('VoxPad/data/') for name in package.namelist())
-            assert not any(name.endswith('/VoxPad.exe') for name in package.namelist())
+            assert 'VoxPad/VoxPad.exe' in package.namelist()
             package.extractall(target)
         directory=target/'VoxPad'
         manifest=json.loads((directory/'BUILD-MANIFEST.json').read_text('utf-8'))
@@ -48,12 +48,12 @@ def run(archive,audio,session_check=True):
             report['normal_session']=json.loads(session.stdout.strip().splitlines()[-1])
         report['manifest_files_verified']=len(manifest['files'])
         report['version']=manifest['version']
-        report['checks']=['Whole-archive integrity verified before launch','No PyInstaller executable',
+        report['checks']=['Whole-archive integrity verified before launch','Native .NET launcher with private Python runtime',
                           'Cyrillic and spaces in paths; clean Windows PATH',
                           'Isolated imports ignore external PYTHONHOME and PYTHONPATH',
                           'Bundled model loads from the private runtime',
                           'Data root stays beside launcher instead of inside runtime']
-        if audio is not None:report['checks'].append('Actual speech recognition and audio COM')
+        if audio is not None:report['checks'].append('Actual speech recognition through the Qt application')
         if session_check:report['checks'].append('Normal startup with actual tray and native keyboard hook, without microphone capture')
         return report
 

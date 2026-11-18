@@ -1,0 +1,68 @@
+Create ONE polished, realistic, production-quality UI concept presentation image for VoxPad, a tiny local speech-to-text Windows 11 desktop utility. This is a single cohesive design system shown across seven views, NOT multiple alternative concepts, NOT a website, NOT a workstation dashboard.
+
+REFERENCE IMAGE 1 ROLE: mandatory original logo, a black asymmetric single-wave mark on its original white square. Use the supplied bitmap EXACTLY as an inserted image asset in every VoxPad title bar, proportionally scaled to 28 x 28 logical px. Do not redraw, reinterpret, replace, simplify, mirror, recolor, stylize or redesign this logo. The dark theme must also retain the exact original black-on-white bitmap in a small white tile. Logo source: C:/VoxPad/outputs/source/assets/voxpad.png from https://github.com/Skrxtch-eds/VoxPad/blob/main/outputs/source/assets/voxpad.png. The attached logo is a compositing insert, not stylistic inspiration.
+
+ARTIFACT AND SCALE:
+One high-resolution landscape presentation PNG, target 2880 x 2240 pixels, a 2x rendering of a 1440 x 1120 logical px neutral presentation board. Flat orthographic front view, perfectly sharp Russian typography. No perspective, no device mockups, no desktop wallpaper, no gratuitous scene props. Pale neutral gray background #E9EDF1. Carefully aligned three-column by two-row presentation with generous but economical gaps. Every desktop window has the SAME 400 logical px width. Main ready, main recording and dark main are exactly the same 400 x 344 logical px. Other views use only their necessary natural heights, no enlargement to fit a poster. Small captions outside each window may label the views and actual dimensions. Do not enlarge windows or shrink fonts. Small top board title "VoxPad" and subtitle "Компактная диктовка · Windows 11"; no giant heading or marketing hero. Current date anchor November 17, 2026, use "Сегодня" for history examples.
+
+COMPOSITION:
+Top row, aligned at top: main light ready; main light recording; history.
+Bottom row: statistics; settings; dark main. Under the dark main show a separate small recording capsule plus an unobtrusive compact interaction strip for the button hover/pressed states. Keep all seven requested views fully visible and uncropped. History is about 400 x 440 logical px, statistics about 400 x 300, settings about 400 x 470. Settings can be taller than main because it has eight rows, while preserving comfortable 40-44 px control targets. Do not waste vertical space inside the windows. At a glance this must look like a family of genuinely small Windows utilities, not mobile apps or a big app shrunk down.
+
+DESIGN SYSTEM:
+Premium minimal utility, modern native-feeling Windows 11. Original source palette retained: light shell #F7F9FC, content #FFFFFF, black-blue primary text #101117, readable muted #647084, thin border #DFE4ED, blue action #007AFF, hover #006BE5, pressed #0057BD; danger recording accent #C23A3A, calm green ready status. Dark shell #111113, surface #1C1C1E, secondary #2C2C2E, primary text #F5F5F7, blue #0A84FF. Segoe UI / Segoe UI Variable typography, actual UI body 14-16 logical px, primary action 16 px medium, compact labels 14 px, major statistic numbers 28-32 px. Never microscopic text. Rounded window corners 10 px, control corners 6-8 px, thin borders and extremely restrained shadows. 16 px main padding, 8-12 px gaps. Use a coherent set of 20 px Fluent-like outline icons of 1.75 px stroke. Minimum primary button height 48 px, normal actionable rows 40-44 px. Readable labels, low noise, hierarchy through placement and whitespace. No ornamental cards within cards, gradients, glow, charts, oversized padding, sidebar or technical engine/CPU information.
+
+MAIN LIGHT READY, caption "Главное окно · 400 × 344":
+Small 44 px title bar: original bitmap 28 px, name "VoxPad", a clearly visible calm green dot and "Готов", small Windows minimize and close controls.
+One full-width dominant blue 48-52 px button with a white 20 px microphone icon, "Начать запись", and an inset clear keyboard keycap "Right Ctrl" on the right. Keep the label large and centered within its part of the button; no tiny explanatory sentences.
+Below, compact two-part segmented control, 40 px tall, labels "Удержание" selected and "Переключение" unselected.
+Below, a quiet last-transcript region: header "Последний текст" and ONE accessible copy icon button aligned right, then a readable 15 px two-line transcript "Отправлю обновлённые макеты сегодня до конца дня." No extra metadata or timestamps.
+Bottom: three obvious, visually quiet text-and-icon navigation buttons "История", "Статистика", "Настройки", equal widths and comfortable targets. No fourth nav item, no sidebar.
+
+MAIN LIGHT RECORDING, caption "Во время записи · 400 × 344":
+EXACT same dimensions, section positions and text sizes as the ready state. Titlebar status red dot and "Идёт запись". The primary button becomes a restrained solid red action, white stop-square icon and "Остановить". Integrate a simple expressive short audio waveform and "00:12" into this recording area, with a clear "Right Ctrl" cue still visible. Waveform consists of several smooth rounded vertical bars, not a decorative graph, no glow. Preserve the segmented control, transcript region and footer so the interface never jumps or changes size. No redundant live transcript panel.
+
+HISTORY, caption "История":
+Same brand title bar with original logo and compact window controls. Compact screen heading "История" with back arrow and count "100 записей". One clear 40 px search field, search icon and placeholder "Поиск по тексту".
+One grouped list with subtle separators, not individual cards. Three readable entries with time and concise text, no row buttons:
+"14:32" / "Отправлю обновлённые макеты сегодня…"
+"14:18" / "Давайте обсудим детали на встрече."
+"13:56" / "Запиши идею для нового проекта."
+First row selected using pale blue highlight. A compact selected-record detail below the list, showing "Сегодня, 14:32", and full 15 px text "Отправлю обновлённые макеты сегодня до конца дня."
+Only the selected item has two clean 40 px actions at bottom: copy icon and "Копировать", trash icon and "Удалить". Keep all of this inside a compact 400 px wide window, with no per-row action clutter.
+
+STATISTICS, caption "Статистика":
+Same brand titlebar with original logo, back arrow and heading "Статистика". Show ALL FIVE metrics in a very compact elegant typographic composition, grouped by alignment and one or two thin dividers, NOT decorative metric cards or graphs.
+First line three columns:
+"128" above "Диктовок"
+"8 640" above "Слов"
+"52 480" above "Символов"
+Second line two columns:
+"1 ч 24 мин" above "Время записи"
+"0,8 с" above "Средняя обработка"
+Numbers bold but sensible and consistent, labels 14 px. No charts, no trend arrows, no invented counters, no huge empty space.
+
+SETTINGS, caption "Настройки":
+Same original brand titlebar, back arrow and "Настройки".
+Exactly eight tidy aligned settings rows, no large cards, each clear label left and a correctly matched control right:
+"Горячая клавиша" — keyboard keycap "Right Ctrl" and small edit icon.
+"Режим" — compact selector "Удержание" with chevron (offers hold/toggle).
+"Микрофон" — dropdown "Основной" with chevron.
+"Резервный микрофон" — dropdown "Системный" with chevron.
+"Звуки" — blue on switch.
+"Автозапуск Windows" — gray off switch.
+"Работа в фоне" — blue on switch.
+"Тема" — dropdown "Системная" with chevron.
+Labels 14-15 px, each row about 42 px tall, switches 40 x 24 px in 44 px clickable regions. 16 px margins. Fully visible, no scroll, no technical settings, no extra footer button.
+
+DARK MAIN, caption "Тёмная тема · 400 × 344":
+A small same-size dark-theme counterpart of the light main ready screen, identical layout and original black-on-white bitmap intact. "VoxPad", "Готов", "Начать запись", "Right Ctrl", "Удержание", "Переключение", "Последний текст", same transcript and bottom nav. Readable subtle gray separators and the same blue CTA. This is a complete small window, not a gigantic hero.
+
+FLOATING RECORDING CAPSULE, caption "Поверх окон · 216 × 44":
+Separate ultra-compact dark pill 216 x 44 logical px, tiny red recording indicator, short rounded pale-blue audio waveform, readable "00:12", accessible square stop icon target. Instant recording recognition, low visual weight, no paragraphs, no logo redesign. It floats separately below the dark window.
+
+INTERACTION DETAIL:
+Very small outside-the-windows presentation strip beneath the capsule titled "Состояния кнопки". Three adjacent compact same-color blue button swatches labeled "Обычное", "Наведение", "Нажатие", each illustrating subtly darker blue and pressed treatment. They are annotation samples, not extra in-app controls. This addresses hover and pressed states without cluttering the real UI.
+
+TEXT AND QUALITY:
+All Russian text above must be correctly spelled, crisp, readable and exact. Use coherent alignment and realistic proportional typography. No random Latin labels except VoxPad and Right Ctrl. No fake glyphs or gibberish. No filler statistics, no excess navigation, no huge hero, no sidebar, no technical parameters, no decorative 3D or neon. The single main action must be immediately obvious and strongest. The original logo MUST remain the attached exact shape and appearance. The final artifact should feel like a practically shippable compact Windows application, designed natively for a small 400 px window.

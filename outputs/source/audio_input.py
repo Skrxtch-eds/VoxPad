@@ -19,15 +19,13 @@ class PreparedInput:
         return int(sd.default.device[0]) if device is None else device
 
     def open(self,key):
-        with self.io_lock:return self._open(key)
-
-    def _open(self,key):
-        rate=int(sd.query_devices(key,'input')['default_samplerate'])
-        options=dict(device=key,samplerate=rate,channels=1,dtype='float32',
-                     callback=self.callback,blocksize=0)
-        try:stream=sd.InputStream(**options,latency='low')
-        except sd.PortAudioError:stream=sd.InputStream(**options)
-        return stream,rate,key
+        with self.io_lock:
+            rate=int(sd.query_devices(key,'input')['default_samplerate'])
+            options=dict(device=key,samplerate=rate,channels=1,dtype='float32',
+                         callback=self.callback,blocksize=0)
+            try:stream=sd.InputStream(**options,latency='low')
+            except sd.PortAudioError:stream=sd.InputStream(**options)
+            return stream,rate,key
 
     def prepare(self,device):
         key=self.device_key(device)

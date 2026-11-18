@@ -1,33 +1,28 @@
-"""Normalize dictation spelling and apply the chosen insertion ending."""
+"""Normalize dictation spelling and preserve model punctuation at insertion."""
 import re
 
 _RUSSIAN_TOKEN=re.compile(r'(?<!\w)(?:[А-Яа-яЁё]|<unk>)+(?!\w)')
 
 
 def normalize_transcript(text):
-    """Use ё for <unk>, retaining Russian casing and existing ё/Ё letters."""
+    """Retain the legacy Russian-word repair, without guessing other unknowns.
+
+    <unk> is not a universal spelling of ё. In isolation, other languages and
+    apparent paired quotation markers, retain the uncertainty explicitly.
+    """
     def restore(match):
         word=match.group()
         if '<unk>' not in word:return word
         letters=word.replace('<unk>','')
+        if not letters or (word.startswith('<unk>') and word.endswith('<unk>')):return word
         restored=word.replace('<unk>','Ё' if letters and letters.isupper() else 'ё')
         prefix=text[:match.start()].rstrip(' \t\r\n"«(—')
         if word.startswith('<unk>') and (not prefix or prefix[-1] in '.!?…'):
             restored=restored[0].upper()+restored[1:]
         return restored
     text=_RUSSIAN_TOKEN.sub(restore,text)
-    return text.replace('<unk>','ё').replace('е\u0308','ё').replace('Е\u0308','Ё')
+    return text.replace('е\u0308','ё').replace('Е\u0308','Ё')
 
-def format_ending(text, mode):
-    text = text.rstrip()
-    if not text:
-        return '', False
-    if mode == 'space':
-        if text.endswith('.') and not text.endswith('..'):
-            text=text[:-1].rstrip()
-        return text + ' ', False
-    if mode in ('period_space', 'period_enter'):
-        if text[-1] not in '.!?…。！？':
-            text += '.'
-        return (text + ' ', False) if mode == 'period_space' else (text, True)
-    raise ValueError('Unknown text ending')
+def format_ending(text):
+    text=text.rstrip()
+    return text+' ' if text else ''

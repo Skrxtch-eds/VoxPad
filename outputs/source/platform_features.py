@@ -1,6 +1,5 @@
-"""Windows autostart and temporary system audio ducking."""
+"""Windows autostart."""
 import winreg
-import os
 import sys
 import subprocess
 from pathlib import Path
@@ -10,7 +9,10 @@ def set_autostart(enabled, launcher):
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
         if enabled:
             portable=getattr(sys,'_voxpad_portable_root',None)
-            if portable:
+            installed_launcher=getattr(sys,'_voxpad_launcher',None)
+            if installed_launcher:
+                command=subprocess.list2cmdline([str(installed_launcher),'--tray'])
+            elif portable:
                 directory=Path(portable).resolve()
                 command=subprocess.list2cmdline([str(directory/'runtime/pythonw.exe'),str(directory/'launch.py'),'--tray'])
             else:
@@ -19,40 +21,3 @@ def set_autostart(enabled, launcher):
         else:
             try: winreg.DeleteValue(key,'ParakeetTranscriber')
             except FileNotFoundError: pass
-
-class TemporaryMute:
-    def __init__(self):
-        self.sessions={}
-        self.active=False
-
-    def begin(self):
-        if self.active:return
-        self.active=True
-        try:self.refresh()
-        except Exception:
-            self.restore()
-            raise
-
-    def refresh(self):
-        if not self.active:return
-        from pycaw.pycaw import AudioUtilities
-        for session in AudioUtilities.GetAllSessions():
-            try:
-                # Cue playback belongs to this process and must retain its volume.
-                if session.ProcessId==os.getpid():continue
-                identity=session.InstanceIdentifier
-                if identity in self.sessions:continue
-                volume=session.SimpleAudioVolume
-                previous=float(volume.GetMasterVolume())
-                volume.SetMasterVolume(previous*.2,None)
-                self.sessions[identity]=(volume,previous)
-            except Exception:
-                # A session can disappear while another application is closing.
-                continue
-
-    def restore(self):
-        self.active=False
-        sessions=self.sessions;self.sessions={}
-        for volume,previous in sessions.values():
-            try:volume.SetMasterVolume(previous,None)
-            except Exception:pass  # Already-closed sessions have nothing to restore.

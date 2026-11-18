@@ -42,7 +42,7 @@ def run(archive,audio):
         report['checks']=['Extract ZIP and run EXE without installation',
                           'Path with Cyrillic and spaces; data stored next to EXE',
                           'Bundled Python and Parakeet; no external Python environment',
-                          'Real speech decoding and recognition; cues and Windows audio COM',
+                          'Real speech decoding and recognition through the Qt application',
                           'Packaged normalizer: <unk> becomes ё/Ё; existing ё/Ё retained']
         return report
 
