@@ -7,6 +7,7 @@ import sys
 import shutil
 
 from build_windows import ROOT, SOURCE, version, checksum
+import windows_signing
 
 
 def compile_exe(source, output, *, console=False):
@@ -48,8 +49,13 @@ def switch_images(folder):
         image.save(folder/f'switch-{int(enabled)}.bmp')
 
 
-def build(archive, nsis=None):
+def build(archive, nsis=None, allow_unsigned=False, output=None):
+    windows_signing.preflight(allow_unsigned)
     compiler = find_nsis(nsis)
+    if not allow_unsigned:
+        # An unsigned payload cannot be repaired by signing its outer installer.
+        windows_signing.verify_archive(archive)
+    compiler = windows_signing.prepare_nsis(compiler, allow_unsigned)
     release = version()
     with archive.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -61,19 +67,25 @@ def build(archive, nsis=None):
     generated.write_text(text, 'utf-8-sig')
     worker = ROOT/'work'/f'VoxPad-{release}-InstallWorker.exe'
     compile_exe(generated, worker, console=True)
+    windows_signing.sign(worker, allow_unsigned)
     switch_images(ROOT/'work')
-    output = ROOT/'outputs'/f'VoxPad-{release}-Setup-x64.exe'
+    output = Path(output).resolve() if output else ROOT/'outputs'/f'VoxPad-{release}-Setup-x64.exe'
+    output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(compiler), '/V3', '/INPUTCHARSET', 'UTF8',
+                    *windows_signing.nsis_defines(allow_unsigned),
                     f'/DVERSION={release}', f'/DWORKER={worker}', f'/DOUTPUT={output}',
                     f'/DASSETS={ROOT / "work"}', f'/DICON={SOURCE / "assets/voxpad.ico"}',
                     str(ROOT/'scripts/OnlineSetup.nsi')], check=True, cwd=ROOT)
     checksum(output)
     print(output, flush=True)
+    return output
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', type=Path)
     parser.add_argument('--nsis', help='Path to the NSIS 3 makensis.exe compiler')
+    parser.add_argument('--allow-unsigned', action='store_true', help='Development only; may be blocked by Smart App Control')
+    parser.add_argument('--output', type=Path, help='Separate output path, e.g. for a diagnostic build')
     args = parser.parse_args()
-    build(args.archive.resolve(), args.nsis)
+    build(args.archive.resolve(), args.nsis, args.allow_unsigned, args.output)

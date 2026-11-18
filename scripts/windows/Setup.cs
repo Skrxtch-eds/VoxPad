@@ -15,6 +15,8 @@ internal static class Setup
     private const string PayloadHash = "@SHA256@";
     private static string root;
     private static string localArchive;
+    private static string errorFile;
+    private static string stage = "Подготовка";
     private static bool autostart = true;
     private static bool testMode;
 
@@ -59,6 +61,7 @@ internal static class Setup
 
     private static void InstallLocked(Action<string, int> report, CancellationToken token)
     {
+        stage = "Проверка папки установки";
         CheckRunning();
         Directory.CreateDirectory(root);
         string marker = Path.Combine(root, ".voxpad-install");
@@ -72,6 +75,7 @@ internal static class Setup
             string archive = localArchive ?? Path.Combine(temporary, "payload.zip");
             if (localArchive == null)
             {
+                stage = "Загрузка с GitHub Releases";
                 report("Скачивание приложения и модели…", 0);
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(PayloadUrl);
@@ -97,12 +101,14 @@ internal static class Setup
                 }
             }
             token.ThrowIfCancellationRequested();
+            stage = "Проверка полного ZIP";
             report("Проверка SHA-256…", 72);
             if (Hash(archive) != PayloadHash)
-                throw new IOException("Контрольная сумма не совпала. Повторите установку.");
+                throw new IOException("Контрольная сумма ZIP не совпала. Файл повреждён или относится к другой версии. Скачайте полный ZIP VoxPad " + Release + " заново.");
             string extracted = Path.Combine(temporary, "extracted");
             Directory.CreateDirectory(extracted);
             string prefix = Path.GetFullPath(extracted) + Path.DirectorySeparatorChar;
+            stage = "Распаковка компонентов";
             report("Распаковка компонентов…", 77);
             using (ZipArchive package = ZipFile.OpenRead(archive))
             {
@@ -125,6 +131,7 @@ internal static class Setup
                     throw new IOException("В архиве отсутствует компонент " + file);
             token.ThrowIfCancellationRequested();
             CheckRunning();
+            stage = "Размещение файлов приложения";
             report("Завершение установки…", 95);
             string versions = Path.Combine(root, "versions");
             Directory.CreateDirectory(versions);
@@ -143,10 +150,18 @@ internal static class Setup
             string current = Path.Combine(root, "current.txt");
             if (File.Exists(current)) File.Replace(next, current, null);
             else File.Move(next, current);
+            stage = "Сохранение настроек";
             SavePreferences();
             report("Установка завершена.", 100);
         }
-        finally { if (Directory.Exists(temporary)) Directory.Delete(Extended(temporary), true); }
+        finally
+        {
+            // Cleanup must not replace the actual installation error or turn a
+            // successful installation into a failure if a scanner holds a file.
+            try { if (Directory.Exists(temporary)) Directory.Delete(Extended(temporary), true); }
+            catch (IOException error) { Console.WriteLine("Не удалось убрать временные файлы: " + error.Message); }
+            catch (UnauthorizedAccessException error) { Console.WriteLine("Не удалось убрать временные файлы: " + error.Message); }
+        }
     }
 
     private static void SavePreferences()
@@ -168,6 +183,7 @@ internal static class Setup
 
     private static void Uninstall()
     {
+        stage = "Удаление приложения";
         CheckRunning();
         if (!File.Exists(Path.Combine(root, ".voxpad-install")))
             throw new IOException("Папка установки VoxPad не найдена.");
@@ -184,22 +200,73 @@ internal static class Setup
         }
     }
 
+    private static string DescribeError(Exception error)
+    {
+        var network = error as WebException;
+        if (network != null)
+        {
+            var response = network.Response as HttpWebResponse;
+            string details = response != null ? "HTTP " + (int)response.StatusCode : network.Status.ToString();
+            if (response != null) response.Close();
+            return "Не удалось скачать полный ZIP с GitHub Releases (" + details + "). " +
+                   "Можно скачать ZIP VoxPad " + Release + " отдельно и положить рядом с установщиком.";
+        }
+        if (error is UnauthorizedAccessException)
+            return "Windows отказала в доступе к файлу или папке. Проверьте выбранный каталог и журнал защиты Windows. " + error.Message;
+        if (error is FileNotFoundException || error is DirectoryNotFoundException)
+            return "Не найден необходимый файл или каталог. " + error.Message;
+        if (error is PathTooLongException)
+            return "Слишком длинный путь. Выберите более короткий путь установки. " + error.Message;
+        if (error is InvalidDataException)
+            return "Не удалось прочитать ZIP. Скачайте полный ZIP этой версии заново. " + error.Message;
+        if (error is IOException && ((error.HResult & 0xffff) == 112 || (error.HResult & 0xffff) == 39))
+            return "На диске установки закончилось свободное место. Освободите место и повторите установку.";
+        return error.Message;
+    }
+
+    private static void ReportFailure(Exception error)
+    {
+        string reason = DescribeError(error);
+        string log = "";
+        try
+        {
+            log = Path.Combine(Path.GetTempPath(), "VoxPad-setup-error.log");
+            File.WriteAllText(log, "VoxPad " + Release + "\nЭтап: " + stage + "\n" + error.ToString(), new UTF8Encoding(false));
+        }
+        catch (Exception) { log = ""; }
+        string location = log.Length > 0 ? "Подробности: " + log : "Не удалось сохранить журнал в папке TEMP.";
+        Console.WriteLine("Этап: " + stage + ". " + reason + " — " + location);
+        if (errorFile != null)
+        {
+            try
+            {
+                string message = ("Этап: " + stage + ". " + reason).Replace('\r', ' ').Replace('\n', ' ').Replace('\0', ' ');
+                if (message.Length > 700) message = message.Substring(0, 700);
+                // Windows INI APIs used by Unicode NSIS accept UTF-16 with BOM.
+                File.WriteAllText(errorFile, "[Error]\r\nMessage=" + message + "\r\nDetails=" + location + "\r\n", Encoding.Unicode);
+            }
+            catch (Exception) { /* Console output still contains the original error. */ }
+        }
+    }
+
     [STAThread]
     private static int Main(string[] args)
     {
         AppContext.SetSwitch("Switch.System.IO.UseLegacyPathHandling", false);
         AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false);
-        Console.OutputEncoding = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
         root = null;
-        foreach (string arg in args)
-        {
-            if (arg.StartsWith("--target=")) root = Path.GetFullPath(arg.Substring(9));
-            if (arg.StartsWith("--archive=")) localArchive = Path.GetFullPath(arg.Substring(10));
-            if (arg == "--autostart=0") autostart = false;
-            if (arg == "--test-mode") testMode = true;
-        }
         try
         {
+            foreach (string arg in args)
+                if (arg.StartsWith("--error-file=")) errorFile = Path.GetFullPath(arg.Substring(13));
+            Console.OutputEncoding = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+            foreach (string arg in args)
+            {
+                if (arg.StartsWith("--target=")) root = Path.GetFullPath(arg.Substring(9));
+                if (arg.StartsWith("--archive=")) localArchive = Path.GetFullPath(arg.Substring(10));
+                if (arg == "--autostart=0") autostart = false;
+                if (arg == "--test-mode") testMode = true;
+            }
             if (root == null) throw new ArgumentException("Папка установки не указана.");
             if (Array.IndexOf(args, "--remove-files") >= 0) { Uninstall(); return 0; }
             if (!Environment.Is64BitOperatingSystem) throw new PlatformNotSupportedException("Нужна 64-битная Windows 10/11.");
@@ -218,9 +285,7 @@ internal static class Setup
         }
         catch (Exception error)
         {
-            string log = Path.Combine(Path.GetTempPath(), "VoxPad-setup-error.log");
-            File.WriteAllText(log, error.ToString());
-            Console.WriteLine(error.Message + " — " + log);
+            ReportFailure(error);
             return 1;
         }
     }

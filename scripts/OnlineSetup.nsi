@@ -14,6 +14,11 @@ InstallDir "$LOCALAPPDATA\Programs\VoxPad"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\VoxPad" "InstallLocation"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+; Both the installed uninstaller and the outer setup must be trusted.
+!ifdef SIGN_SCRIPT
+  !uninstfinalize '"${SIGN_POWERSHELL}" -NoProfile -NonInteractive -File "${SIGN_SCRIPT}" -Mode Sign -Path "%1"' = 0
+  !finalize '"${SIGN_POWERSHELL}" -NoProfile -NonInteractive -File "${SIGN_SCRIPT}" -Mode Sign -Path "%1"' = 0
+!endif
 ShowInstDetails nevershow
 ShowUninstDetails show
 BrandingText "VoxPad ${VERSION}"
@@ -29,7 +34,7 @@ VIAddVersionKey /LANG=1049 "LegalCopyright" "VoxPad contributors"
 !define MUI_TEXTCOLOR "111111"
 !define MUI_ABORTWARNING
 !define MUI_INSTFILESPAGE_HEADER_TEXT "Устанавливаем VoxPad"
-!define MUI_INSTFILESPAGE_HEADER_SUBTEXT "Загрузка, проверка и распаковка приложения и модели."
+!define MUI_INSTFILESPAGE_HEADER_SUBTEXT "Подготовка, проверка и распаковка приложения и модели."
 !define MUI_FINISHPAGE_TITLE "VoxPad готов к работе"
 !define MUI_FINISHPAGE_TEXT "Приложение и модель установлены.$\r$\nДля диктовки интернет больше не нужен.$\r$\n$\r$\nЗапускайте VoxPad.exe из папки установки или используйте выбранные ярлыки."
 Page custom SettingsCreate SettingsLeave
@@ -59,6 +64,10 @@ Var Archive
 Var WorkerArguments
 Var Result
 Var ProgressBar
+Var WorkerError
+Var WorkerLog
+Var BootstrapLog
+Var LogHandle
 
 Function InstallShow
   FindWindow $0 "#32770" "" $HWNDPARENT
@@ -134,7 +143,11 @@ Function SettingsCreate
   !insertmacro Switch $MenuSwitch 84u "Ярлык в меню «Пуск»" $MenuEnabled
   !insertmacro Label 0 111u 250u 16u "Запуск вместе с Windows" "111111"
   !insertmacro Switch $StartupSwitch 108u "Запуск вместе с Windows" $StartupEnabled
-  !insertmacro Label 0 132u 300u 10u "Нужен интернет и 4 ГБ свободного места." "77777A"
+  ${If} $Archive != ""
+    !insertmacro Label 0 132u 300u 10u "Используем локальный ZIP. Нужно 4 ГБ на диске." "77777A"
+  ${Else}
+    !insertmacro Label 0 132u 300u 10u "Нужен интернет и 4 ГБ свободного места." "77777A"
+  ${EndIf}
   nsDialogs::Show
 FunctionEnd
 
@@ -186,6 +199,11 @@ Function .onInit
   ${EndIf}
   ClearErrors
   ${GetOptions} $0 "/ARCHIVE=" $Archive
+  ${If} $Archive == ""
+    ${If} ${FileExists} "$EXEDIR\VoxPad-${VERSION}-Windows-x64-runtime.zip"
+      StrCpy $Archive "$EXEDIR\VoxPad-${VERSION}-Windows-x64-runtime.zip"
+    ${EndIf}
+  ${EndIf}
   ClearErrors
   ${GetOptions} $0 "/DESKTOP=" $1
   ${IfNot} ${Errors}
@@ -227,22 +245,54 @@ FunctionEnd
 Section "VoxPad"
   Call CheckRunning
   SetOutPath "$PLUGINSDIR"
+  ; This log belongs to NSIS, so it exists even if Windows refuses the worker.
+  ${GetFileName} "$PLUGINSDIR" $0
+  StrCpy $BootstrapLog "$TEMP\VoxPad-setup-bootstrap-$0.log"
+  ClearErrors
+  FileOpen $LogHandle "$BootstrapLog" w
+  ${IfNot} ${Errors}
+    FileWrite $LogHandle "VoxPad ${VERSION} setup bootstrap$\r$\nPreparing InstallWorker.exe$\r$\n"
+    FileClose $LogHandle
+  ${EndIf}
   File /oname=InstallWorker.exe "${WORKER}"
-  StrCpy $WorkerArguments '--target="$INSTDIR" --autostart=$StartupEnabled'
+  Delete "$PLUGINSDIR\InstallError.ini"
+  StrCpy $WorkerArguments '--target="$INSTDIR" --autostart=$StartupEnabled --error-file="$PLUGINSDIR\InstallError.ini"'
   ${If} $TestMode == 1
     StrCpy $WorkerArguments '$WorkerArguments --test-mode'
   ${EndIf}
   ${If} $Archive != ""
     StrCpy $WorkerArguments '$WorkerArguments --archive="$Archive"'
   ${EndIf}
-  DetailPrint "Скачивание приложения и модели. Это может занять несколько минут…"
+  DetailPrint "Подготовка приложения и модели. Это может занять несколько минут…"
   nsExec::ExecToLog /OEM '"$PLUGINSDIR\InstallWorker.exe" $WorkerArguments'
   Pop $Result
+  ClearErrors
+  FileOpen $LogHandle "$BootstrapLog" a
+  ${IfNot} ${Errors}
+    FileWrite $LogHandle "Worker result: $Result$\r$\n"
+    FileClose $LogHandle
+  ${EndIf}
   SendMessage $ProgressBar 0x040A 0 0
   ${If} $Result != 0
     SetErrorLevel 1
+    ReadINIStr $WorkerError "$PLUGINSDIR\InstallError.ini" "Error" "Message"
+    ReadINIStr $WorkerLog "$PLUGINSDIR\InstallError.ini" "Error" "Details"
+    ${If} $WorkerError == ""
+      StrCpy $WorkerError "Компонент установки не запустился или завершился до записи ошибки (код: $Result). Проверьте журнал защиты Windows и наличие .NET Framework 4.8."
+      ${IfNot} ${FileExists} "$PLUGINSDIR\InstallWorker.exe"
+        StrCpy $WorkerError "Файл InstallWorker.exe отсутствует после распаковки. Проверьте журнал защиты Windows."
+      ${EndIf}
+      ${If} ${FileExists} "$BootstrapLog"
+        StrCpy $WorkerLog "Журнал установщика: $BootstrapLog"
+      ${Else}
+        StrCpy $WorkerLog "Не удалось записать журнал в TEMP. Код компонента: $Result."
+      ${EndIf}
+    ${EndIf}
+    DetailPrint "$WorkerError"
+    DetailPrint "$WorkerLog"
+    SetDetailsView show
     IfSilent +2
-    MessageBox MB_OK|MB_ICONSTOP "Установка не завершена. Проверьте интернет и свободное место.$\r$\nПодробности: $TEMP\VoxPad-setup-error.log"
+    MessageBox MB_OK|MB_ICONSTOP "Установка не завершена.$\r$\n$\r$\n$WorkerError$\r$\n$\r$\n$WorkerLog"
     Abort "Установка не завершена."
   ${EndIf}
   SetOutPath "$INSTDIR\.setup"

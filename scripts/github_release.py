@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from build_windows import ROOT, version
+from windows_signing import verify_release, verify_portable
 
 REPOSITORY = 'Skrxtch-eds/VoxPad'
 
@@ -50,10 +51,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target', required=True, help='Verified commit SHA')
     parser.add_argument('--publish', action='store_true')
+    parser.add_argument('--distribution',choices=('portable','installer'),default='portable')
     args = parser.parse_args()
     release = version()
     tag = 'v' + release
     body = (ROOT/'docs/releases'/f'{release}.md').read_text('utf-8')
+    if args.distribution=='portable':
+        assets=[ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-portable.zip']
+        manifest=verify_portable(assets[0])
+        if manifest['version']!=release:
+            raise ValueError('Portable version does not match the release.')
+    else:
+        assets = [ROOT/'outputs'/f'VoxPad-{release}-Setup-x64.exe',
+                  ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-runtime.zip']
+        verify_release(assets[1], assets[0])
+    for asset in assets:
+        with asset.open('rb') as stream:
+            digest=hashlib.file_digest(stream,'sha256').hexdigest()
+        if asset.with_suffix(asset.suffix+'.sha256').read_text('ascii').split()!=[digest,asset.name]:
+            raise ValueError('Release checksum mismatch: '+asset.name)
     entry = next((item for item in request('GET', '/releases') if item['tag_name'] == tag), None)
     if entry is None:
         entry = request('POST', '/releases', dict(tag_name=tag, target_commitish=args.target,
@@ -61,8 +77,6 @@ def main():
     if not entry['draft']:
         raise SystemExit('Release already published. Refusing to replace public assets.')
     existing = {asset['name']: asset for asset in entry['assets']}
-    assets = [ROOT/'outputs'/f'VoxPad-{release}-Setup-x64.exe',
-              ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-runtime.zip']
     for asset in [item for path in assets for item in (path, path.with_suffix(path.suffix+'.sha256'))]:
         if asset.name in existing:
             with asset.open('rb') as stream:

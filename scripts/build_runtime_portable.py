@@ -12,6 +12,7 @@ import sys
 import zipfile
 
 from build_windows import ROOT,SOURCE,MODEL_FOLDER,MODEL_FILES,version,notices,checksum
+import windows_signing
 
 PACKAGES=('numpy','scipy','Pillow','sherpa-onnx','sherpa-onnx-core','sounddevice','soundfile',
           'cffi','pycparser','typing_extensions','PySide6-Essentials','shiboken6')
@@ -49,9 +50,27 @@ def copy_tree(source,target):
             shutil.copy2(path,destination)
 
 
+def distribution_paths(release, launcher):
+    if launcher == 'cmd':
+        return (ROOT/'work'/('runtime-cmd-dist-'+release)/'VoxPad',
+                ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-portable.zip')
+    return (ROOT/'work'/('runtime-dist-'+release)/'VoxPad',
+            ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-runtime.zip')
+
+
+def write_launchers(bundle, launcher):
+    if launcher == 'exe':
+        from build_online_setup import launcher as compile_launcher
+        compile_launcher(bundle)
+    (bundle/'VoxPad.cmd').write_bytes(b'@echo off\r\nstart "" "%~dp0runtime\\pythonw.exe" -I "%~dp0launch.py" %*\r\n')
+    (bundle/'VoxPad-debug.cmd').write_bytes(b'@echo off\r\n"%~dp0runtime\\python.exe" -I "%~dp0launch.py" %*\r\nif errorlevel 1 pause\r\n')
+
+
 def build(args):
     if sys.platform!='win32' or sys.version_info[:2]!=(3,14) or sys.maxsize<=2**32:
         raise SystemExit('Build with official 64-bit Python 3.14 on Windows.')
+    if args.launcher == 'exe':
+        windows_signing.preflight(args.allow_unsigned)
     base=Path(sys.base_prefix)
     signature_check = """
     $ErrorActionPreference = 'Stop'
@@ -69,7 +88,7 @@ def build(args):
         raise SystemExit('The build Python contains environment-specific trust configuration.')
     files,versions=package_files()
     release=version()
-    bundle=ROOT/'work'/('runtime-dist-'+release)/'VoxPad'
+    bundle, archive=distribution_paths(release, args.launcher)
     if bundle.exists():raise SystemExit('Use a fresh version or output directory: '+str(bundle))
     runtime=bundle/'runtime';runtime.mkdir(parents=True)
     # Copy the original executables and DLLs verbatim, retaining their signatures.
@@ -86,10 +105,7 @@ def build(args):
     shutil.copytree(SOURCE/'assets',app/'assets')
     shutil.copytree(SOURCE/'qml',app/'qml')
     shutil.copy2(ROOT/'scripts/runtime_bootstrap.py',bundle/'launch.py')
-    from build_online_setup import launcher
-    launcher(bundle)
-    (bundle/'VoxPad.cmd').write_bytes(b'@echo off\r\nstart "" "%~dp0runtime\\pythonw.exe" -I "%~dp0launch.py" %*\r\n')
-    (bundle/'VoxPad-debug.cmd').write_bytes(b'@echo off\r\n"%~dp0runtime\\python.exe" -I "%~dp0launch.py" %*\r\nif errorlevel 1 pause\r\n')
+    write_launchers(bundle, args.launcher)
     model=Path(args.model_dir) if args.model_dir else ROOT/'outputs/Transcriber/models'/MODEL_FOLDER
     destination=bundle/'models'/MODEL_FOLDER;destination.mkdir(parents=True)
     for name in MODEL_FILES:
@@ -100,7 +116,7 @@ def build(args):
         'VoxPad '+release+' — Windows 10/11 x64\n\n'
         '1. Закройте старый VoxPad через значок в трее.\n'
         '2. Извлеките всю папку VoxPad из ZIP.\n'
-        '3. Откройте VoxPad.exe. Python и установка не нужны.\n\n'
+        '3. Откройте VoxPad.'+args.launcher+'. Python и установка не нужны.\n\n'
         'В этой сборке используется отдельный Python и открытые файлы приложения.\n'
         'Папки runtime, app и models должны оставаться рядом с VoxPad.cmd.\n'
         'Настройки и история хранятся в data. Для переноса скопируйте data из старой версии.\n'
@@ -110,8 +126,13 @@ def build(args):
     for path in bundle.rglob('*'):
         if path.is_file() and (path.suffix in ('.sqlite3','.raw') or path.name in ('settings.json','smoke-test.json')):
             raise ValueError('User data in distribution: '+str(path))
+    # CMD portable preserves upstream files verbatim, as in 0.5.3.
+    # The separate EXE distribution signs its binaries before hashing/packing.
+    if args.launcher == 'exe':
+        windows_signing.sign(bundle, args.allow_unsigned)
     manifest={'version':release,'format':'private-python-runtime','python':sys.version.split()[0],
-              'dependencies':versions,'files':{}}
+              'dependencies':versions,'entrypoint':'VoxPad.'+args.launcher,
+              'signed_release':args.launcher=='exe' and not args.allow_unsigned,'files':{}}
     for path in sorted(bundle.rglob('*')):
         if path.is_file():
             with path.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
@@ -119,7 +140,6 @@ def build(args):
     (bundle/'BUILD-MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),'utf-8')
     print('Bundle prepared: '+str(bundle),flush=True)
     if not args.no_archive:
-        archive=ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-runtime.zip'
         temporary=archive.with_suffix('.zip.tmp')
         with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as package:
             for path in sorted(bundle.rglob('*')):
@@ -133,4 +153,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-dir',type=Path)
     parser.add_argument('--no-archive',action='store_true')
+    parser.add_argument('--launcher',choices=('cmd','exe'),default='cmd',
+                        help='cmd (default): portable as in 0.5.3; exe: separate installer payload requiring publisher signing')
+    parser.add_argument('--allow-unsigned',action='store_true',help='Development EXE build only; may be blocked by Smart App Control')
     build(parser.parse_args())

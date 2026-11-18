@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -17,7 +18,13 @@ def run(archive,audio,session_check=True):
         with zipfile.ZipFile(archive) as package:
             assert all((target/name).resolve().is_relative_to(target.resolve()) for name in package.namelist())
             assert not any(name.startswith('VoxPad/data/') for name in package.namelist())
-            assert 'VoxPad/VoxPad.exe' in package.namelist()
+            manifest=json.loads(package.read('VoxPad/BUILD-MANIFEST.json'))
+            entrypoint=manifest.get('entrypoint','VoxPad.exe')
+            assert entrypoint in ('VoxPad.exe','VoxPad.cmd')
+            assert 'VoxPad/'+entrypoint in package.namelist()
+            if entrypoint=='VoxPad.cmd':
+                assert not any(name in package.namelist() for name in
+                               ('VoxPad/VoxPad.exe','VoxPad/InstallWorker.exe','VoxPad/Uninstall.exe'))
             package.extractall(target)
         directory=target/'VoxPad'
         manifest=json.loads((directory/'BUILD-MANIFEST.json').read_text('utf-8'))
@@ -32,15 +39,29 @@ def run(archive,audio,session_check=True):
         # A private runtime must ignore external environment settings as well.
         clean['PYTHONHOME']=str(target/'not-a-python-installation')
         clean['PYTHONPATH']=str(target/'untrusted-module-search-path')
-        command=[str(directory/'runtime/python.exe'),'-I',str(directory/'launch.py'),'--smoke-test','--tray']
-        if audio is not None:command.extend(('--smoke-audio',str(audio)))
-        subprocess.run(command,
-                       env=clean,cwd=temporary,check=True,timeout=120)
+        if entrypoint=='VoxPad.cmd':
+            clean['VOXPAD_SMOKE_CMD']=str(directory/entrypoint)
+            arguments='--smoke-test --tray'
+            if audio is not None:
+                clean['VOXPAD_SMOKE_AUDIO']=str(audio)
+                arguments+=' --smoke-audio "%VOXPAD_SMOKE_AUDIO%"'
+            # Exercise the actual double-click entrypoint, with no external Python.
+            command=f'cmd.exe /d /v:off /s /c ""%VOXPAD_SMOKE_CMD%" {arguments}"'
+            subprocess.run(command,env=clean,cwd=temporary,check=True,timeout=120)
+            deadline=time.monotonic()+120
+            while not (directory/'smoke-test.json').exists() and time.monotonic()<deadline:
+                if (directory/'data/startup-error.log').exists():
+                    raise RuntimeError((directory/'data/startup-error.log').read_text('utf-8'))
+                time.sleep(.1)
+        else:
+            command=[str(directory/'runtime/python.exe'),'-I',str(directory/'launch.py'),'--smoke-test','--tray']
+            if audio is not None:command.extend(('--smoke-audio',str(audio)))
+            subprocess.run(command,env=clean,cwd=temporary,check=True,timeout=120)
         report=json.loads((directory/'smoke-test.json').read_text('utf-8'))
         assert report['ready'] and report['portable_runtime'] and not report['frozen'],report
         if audio is not None:assert report['transcript'],report
         assert Path(report['base'])==directory
-        assert Path(report['executable'])==directory/'runtime/python.exe'
+        assert Path(report['executable'])==directory/'runtime'/('pythonw.exe' if entrypoint=='VoxPad.cmd' else 'python.exe')
         assert not (directory/'runtime/data').exists()
         if session_check:
             session=subprocess.run([str(directory/'runtime/python.exe'),'-I',str(ROOT/'tests/runtime_session_smoke.py'),
@@ -48,7 +69,9 @@ def run(archive,audio,session_check=True):
             report['normal_session']=json.loads(session.stdout.strip().splitlines()[-1])
         report['manifest_files_verified']=len(manifest['files'])
         report['version']=manifest['version']
-        report['checks']=['Whole-archive integrity verified before launch','Native .NET launcher with private Python runtime',
+        report['entrypoint']=entrypoint
+        report['checks']=['Whole-archive integrity verified before launch',
+                          'CMD launcher with original Python runtime; no VoxPad EXE' if entrypoint=='VoxPad.cmd' else 'Private Python runtime',
                           'Cyrillic and spaces in paths; clean Windows PATH',
                           'Isolated imports ignore external PYTHONHOME and PYTHONPATH',
                           'Bundled model loads from the private runtime',
@@ -60,10 +83,10 @@ def run(archive,audio,session_check=True):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('archive',type=Path);parser.add_argument('audio',type=Path)
+    parser.add_argument('archive',type=Path);parser.add_argument('audio',type=Path,nargs='?')
     parser.add_argument('--report',type=Path)
     parser.add_argument('--skip-session-check',action='store_true',help='For CI without a desktop session')
     args=parser.parse_args()
-    result=run(args.archive.resolve(),args.audio.resolve(),not args.skip_session_check)
+    result=run(args.archive.resolve(),args.audio.resolve() if args.audio else None,not args.skip_session_check)
     if args.report:args.report.write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf-8')
     print(json.dumps(result,ensure_ascii=True,indent=2))

@@ -1,4 +1,4 @@
-# Разработка VoxPad 0.6.2
+# Разработка VoxPad 0.6.3
 
 ## Среда
 
@@ -41,14 +41,15 @@ QML-проверки используют настоящий Qt Quick и отд�
 
 ## Сборка
 
-Установите модель через приложение перед локальной сборкой. Компилятор C# .NET Framework берётся из C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe. Для установщика нужен NSIS 3: makensis.exe в PATH, стандартной папке Program Files или распакованный work/tools/nsis-3.13. Другой путь передаётся через --nsis. CI загружает официальный NSIS 3.13 и проверяет закреплённый SHA-256 ZIP.
+Установите модель через приложение перед локальной сборкой. По умолчанию собирается переносимый формат CMD как в 0.5.3. Он использует текущий интерфейс и официальный Python 3.14.10. C# и NSIS для portable не нужны.
 
 ```powershell
 .venv\Scripts\python.exe scripts/build_runtime_portable.py
-.venv\Scripts\python.exe scripts/build_online_setup.py outputs/VoxPad-0.6.2-Windows-x64-runtime.zip
 ```
 
-Первый скрипт сверяет RECORD зависимостей, копирует неизменённый Python, модули и Parakeet, компилирует небольшой Launcher.cs, формирует BUILD-MANIFEST.json и полный ZIP. Второй компилирует Setup.cs в консольный worker с версией, URL релиза и SHA-256 ZIP, рисует изображения переключателей и собирает scripts/OnlineSetup.nsi через makensis.exe. Переименование или пересборка ZIP требует пересборки установщика.
+Создаются work/runtime-cmd-dist-0.6.3/VoxPad, outputs/VoxPad-0.6.3-Windows-x64-portable.zip и SHA-256. В манифесте указывается entrypoint=VoxPad.cmd. Сборщик сверяет RECORD зависимостей, действующие подписи Python Software Foundation и копирует исходные бинарные файлы без изменения. Затем добавляет открытые модули приложения, QML, ресурсы, модель, лицензии, CMD и BUILD-MANIFEST.json. Данные пользователей не включаются.
+
+Для отдельной ветки EXE используйте --launcher exe: создаётся другой каталог work/runtime-dist-<версия> и архив Windows-x64-runtime.zip. Этот режим и build_online_setup.py требуют настроенную доверенную подпись издателя; --allow-unsigned предназначен для диагностической EXE-сборки. Настройка описана в [подписи Windows](windows-signing.md). Для неё нужны C# .NET Framework и NSIS 3. Текущий portable-релиз не содержит EXE этой ветки.
 
 NSIS отвечает за русскоязычный интерфейс, выбор родительской папки, три переключателя, ярлыки, HKCU Run и регистрацию удаления без прав администратора. Worker использует .NET Framework 4.8 и TLS 1.2, загружает один комплект с GitHub, проверяет полный SHA-256 до распаковки, проверяет пути ZIP, размещает версию отдельно и переключает current.txt. Выбор автозапуска записывается в настройки приложения без изменения остальных полей. Лаунчер читает current.txt и запускает комплектный pythonw.exe с -I. installed.flag включает общую data. Старые версии сохраняются. Повторная установка той же версии использует её каталог. Защита от одновременной установки действует через отдельный mutex. Worker для удаления хранится в .setup; NSIS-деинсталлятор сохраняет data.
 
@@ -57,11 +58,11 @@ NSIS отвечает за русскоязычный интерфейс, выб
 ## Проверка дистрибутива
 
 ```powershell
-.venv\Scripts\python.exe tests/runtime_portable_smoke.py outputs/VoxPad-0.6.2-Windows-x64-runtime.zip path/to/public-speech.wav
-.venv\Scripts\python.exe tests/online_setup_smoke.py outputs/VoxPad-0.6.2-Setup-x64.exe outputs/VoxPad-0.6.2-Windows-x64-runtime.zip path/to/public-speech.wav
+.venv\Scripts\python.exe tests/runtime_portable_smoke.py outputs/VoxPad-0.6.3-Windows-x64-portable.zip path/to/public-speech.wav
+.venv\Scripts\python.exe scripts/windows_signing.py --portable --archive outputs/VoxPad-0.6.3-Windows-x64-portable.zip
 ```
 
-Проверяется установка в отдельную папку без изменения ярлыков/реестра, комплектный runtime, ASR, автозапуск по умолчанию и его отключение, повтор установки, сохранение остальных настроек и данных, удаление. Флаг --online дополнительно проверяет загрузку опубликованного ZIP. Перед выпуском проверьте установку в чистой Windows, обычный микрофон и Defender. Проверка на компьютере разработчика имеет ограниченный охват.
+Проверяются все хеши манифеста, фактический запуск CMD в пути с кириллицей и пробелами, комплектный runtime, ASR на переданном WAV, трей и клавиатурный обработчик без записи микрофона. Проверка portable перед публикацией запрещает собственные EXE вне runtime, посторонние файлы и пользовательские данные, сверяет хеши всех файлов и подписи Python Software Foundation. Перед выпуском проверьте Defender и целевой компьютер. Проверка на машине разработчика имеет ограниченный охват.
 
 ## Публикация
 
@@ -71,7 +72,7 @@ NSIS отвечает за русскоязычный интерфейс, выб
 .venv\Scripts\python.exe scripts/github_release.py --target <полный-SHA-коммита> --publish
 ```
 
-Скрипт использует сохранённую Git Credential Manager авторизацию без записи токена в файлы. Создаёт draft, загружает Setup, полный ZIP и контрольные суммы, затем публикует релиз. Уже опубликованные файлы не заменяются. При прерванной загрузке проверьте draft и удалите неполные вложения перед повтором. CI выполняет модульные проверки при push. Релизный workflow собирает ту же схему вручную через workflow_dispatch.
+Скрипт использует сохранённую Git Credential Manager авторизацию без записи токена в файлы. По умолчанию проверяет portable и его SHA-256, создаёт draft, загружает полный ZIP с контрольной суммой и публикует релиз. Для отдельной ветки установщика есть --distribution installer с проверкой всех подписей. Уже опубликованные файлы не заменяются. При прерванной загрузке проверьте draft и удалите неполные вложения перед повтором. CI выполняет модульные проверки при push. Релизный workflow собирает CMD portable вручную через workflow_dispatch.
 
 ## Лицензии
 

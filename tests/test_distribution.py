@@ -9,12 +9,22 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
+sys.path.insert(0,str(ROOT/'outputs/source'))
 from build_windows import version
-from build_runtime_portable import copy_tree
+from build_runtime_portable import copy_tree, distribution_paths, write_launchers
 import runtime_bootstrap
 
 
 class DistributionTests(unittest.TestCase):
+    def test_cmd_distribution_does_not_compile_an_exe_or_overwrite_installer_payload(self):
+        with tempfile.TemporaryDirectory() as temporary, patch('build_online_setup.compile_exe') as compile_exe:
+            bundle=Path(temporary)
+            write_launchers(bundle,'cmd')
+            self.assertEqual({path.name for path in bundle.iterdir()}, {'VoxPad.cmd','VoxPad-debug.cmd'})
+            self.assertIn(b'runtime\\pythonw.exe" -I "%~dp0launch.py"', (bundle/'VoxPad.cmd').read_bytes())
+            compile_exe.assert_not_called()
+        self.assertNotEqual(distribution_paths('0.6.2','cmd'),distribution_paths('0.6.2','exe'))
+
     def test_builder_reads_the_launcher_version_without_loading_the_ui(self):
         from app import VERSION
         self.assertEqual(version(),VERSION)
