@@ -1,10 +1,10 @@
 """Publish verified release assets using the existing Git credential manager session."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
-from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from build_windows import ROOT, version
@@ -39,25 +39,27 @@ def main():
     release = version()
     tag = 'v' + release
     body = (ROOT/'docs/releases'/f'{release}.md').read_text('utf-8')
-    try:
-        entry = request('GET', '/releases/tags/' + tag)
-    except HTTPError as error:
-        if error.code != 404:
-            raise
+    entry = next((item for item in request('GET', '/releases') if item['tag_name'] == tag), None)
+    if entry is None:
         entry = request('POST', '/releases', dict(tag_name=tag, target_commitish=args.target,
                         name='VoxPad ' + release, body=body, draft=True))
     if not entry['draft']:
         raise SystemExit('Release already published. Refusing to replace public assets.')
-    existing = {asset['name'] for asset in entry['assets']}
+    existing = {asset['name']: asset for asset in entry['assets']}
     assets = [ROOT/'outputs'/f'VoxPad-{release}-Setup-x64.exe',
               ROOT/'outputs'/f'VoxPad-{release}-Windows-x64-runtime.zip']
     for asset in [item for path in assets for item in (path, path.with_suffix(path.suffix+'.sha256'))]:
         if asset.name in existing:
-            raise SystemExit('Draft already contains asset. Inspect before retry: ' + asset.name)
+            with asset.open('rb') as stream:
+                digest = 'sha256:' + hashlib.file_digest(stream, 'sha256').hexdigest()
+            if existing[asset.name].get('digest') != digest:
+                raise SystemExit('Draft asset differs or lacks a digest. Inspect before retry: ' + asset.name)
+            continue
         print('Uploading ' + asset.name, flush=True)
         request('POST', entry['upload_url'].split('{')[0] + '?name=' + asset.name, binary=asset)
     if args.publish:
-        entry = request('PATCH', '/releases/' + str(entry['id']), dict(draft=False, body=body, make_latest='true'))
+        entry = request('PATCH', '/releases/' + str(entry['id']),
+                        dict(draft=False, body=body, make_latest='true', target_commitish=args.target))
     print(entry['html_url'], flush=True)
 
 
