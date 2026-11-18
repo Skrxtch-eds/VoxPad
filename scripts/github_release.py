@@ -5,14 +5,30 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from build_windows import ROOT, version
 
 REPOSITORY = 'Skrxtch-eds/VoxPad'
 
 
+def github_url(url):
+    parsed = urlsplit(url)
+    if parsed.scheme != 'https' or parsed.netloc not in ('api.github.com', 'uploads.github.com'):
+        raise ValueError('GitHub credentials may only be sent to the GitHub API.')
+    return url
+
+
+class GitHubRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        github_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def request(method, path, payload=None, binary=None):
+    url = github_url('https://api.github.com/repos/' + REPOSITORY + path
+                     if not path or path.startswith('/') else path)
     environment = dict(os.environ, GIT_TERMINAL_PROMPT='0')
     result = subprocess.run(['git', 'credential', 'fill'], input='protocol=https\nhost=github.com\n\n',
                             text=True, capture_output=True, check=True, env=environment)
@@ -26,8 +42,7 @@ def request(method, path, payload=None, binary=None):
     if binary:
         data = binary.read_bytes()
         headers['Content-Type'] = 'application/octet-stream'
-    url = path if path.startswith('https://') else 'https://api.github.com/repos/' + REPOSITORY + path
-    with urlopen(Request(url, data=data, headers=headers, method=method), timeout=600) as response:
+    with build_opener(GitHubRedirects()).open(Request(url, data=data, headers=headers, method=method), timeout=600) as response:
         return json.load(response)
 
 

@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14.10'
           cache: pip
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
@@ -45,6 +45,13 @@ jobs:
           from pathlib import Path
           archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-runtime.zip'))
           subprocess.run([sys.executable, 'scripts/build_online_setup.py', str(archive)], check=True)
+      - name: Check release secrets and dependency advisories
+        shell: python
+        run: |
+          import subprocess, sys
+          from pathlib import Path
+          archive = next(Path('outputs').glob('VoxPad-*-Windows-x64-runtime.zip'))
+          subprocess.run([sys.executable, 'scripts/security_check.py', '--archive', str(archive), '--osv'], check=True)
       - name: Scan distribution with Microsoft Defender
         run: |
           $version = python -c "import sys; sys.path.insert(0, 'scripts'); from build_windows import version; print(version())"

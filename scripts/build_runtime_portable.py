@@ -4,8 +4,10 @@ import base64
 import hashlib
 from importlib import metadata
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -48,23 +50,37 @@ def copy_tree(source,target):
 
 
 def build(args):
-    if sys.platform!='win32' or sys.version_info[:2]!=(3,12) or sys.maxsize<=2**32:
-        raise SystemExit('Build with 64-bit Python 3.12 on Windows.')
+    if sys.platform!='win32' or sys.version_info[:2]!=(3,14) or sys.maxsize<=2**32:
+        raise SystemExit('Build with official 64-bit Python 3.14 on Windows.')
+    base=Path(sys.base_prefix)
+    signature_check = """
+    $ErrorActionPreference = 'Stop'
+    foreach ($name in @('python.exe', 'pythonw.exe', 'python314.dll')) {
+        $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $env:VOXPAD_BUILD_PYTHON $name)
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Python Software Foundation') {
+            throw "Release Python must have a valid Python Software Foundation signature. Failed $name"
+        }
+    }
+    """
+    powershell=shutil.which('pwsh.exe') or 'powershell.exe'
+    subprocess.run([powershell,'-NoProfile','-NonInteractive','-Command',signature_check],
+                   env={**os.environ,'VOXPAD_BUILD_PYTHON':str(base)},check=True)
+    if (base/'Lib/codex-rejected-cas.pem').exists():
+        raise SystemExit('The build Python contains environment-specific trust configuration.')
     files,versions=package_files()
     release=version()
     bundle=ROOT/'work'/('runtime-dist-'+release)/'VoxPad'
     if bundle.exists():raise SystemExit('Use a fresh version or output directory: '+str(bundle))
     runtime=bundle/'runtime';runtime.mkdir(parents=True)
-    base=Path(sys.base_prefix)
     # Copy the original executables and DLLs verbatim, retaining their signatures.
-    for name in ('python.exe','pythonw.exe','python3.dll','python312.dll','vcruntime140.dll','vcruntime140_1.dll','LICENSE.txt'):
+    for name in ('python.exe','pythonw.exe','python3.dll','python314.dll','vcruntime140.dll','vcruntime140_1.dll','LICENSE.txt'):
         shutil.copy2(base/name,runtime/name)
     for name in ('Lib','DLLs'):copy_tree(base/name,runtime/name)
     for relative,path in files.items():
         destination=runtime/'Lib/site-packages'/relative
         destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,destination)
     # Isolate imports from installed Python, the registry, PYTHONPATH and the cwd.
-    (runtime/'python312._pth').write_text('Lib\nDLLs\nLib/site-packages\n../app\nimport site\n',encoding='ascii')
+    (runtime/'python314._pth').write_text('Lib\nDLLs\nLib/site-packages\n../app\nimport site\n',encoding='ascii')
     app=bundle/'app';app.mkdir()
     for path in SOURCE.glob('*.py'):shutil.copy2(path,app/path.name)
     shutil.copytree(SOURCE/'assets',app/'assets')

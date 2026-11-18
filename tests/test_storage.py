@@ -62,5 +62,16 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(self.store.settings['ui_theme'],'light')
         self.assertEqual(Store(self.directory.name).settings['ui_theme'],'light')
 
+    def test_unknown_legacy_data_is_not_copied_to_new_preferences(self):
+        self.store.settings_path.write_text(
+            '{"ui_theme":"dark","password":"fixture","api_key":"fixture","unrelated_note":"fixture"}',
+            encoding='utf-8')
+        restored=Store(self.directory.name)
+        self.assertEqual(set(restored.settings),set(DEFAULTS))
+        restored.save({'sounds':False})
+        saved=restored.settings_path.read_text('utf-8')
+        self.assertNotIn('fixture',saved)
+        self.assertEqual(Store(self.directory.name).settings['ui_theme'],'dark')
+
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,6 @@
 # QML design QA
 
-Source visual truth: `C:/Users/Skretch/.codex/generated_images/01a1eabb-f792-7af0-b78e-d8226a3a5b71/` — `main screen.png`, `History.png`, `statistic.png`, `settings.png`.
+Source visual truth: locally supplied reference images — `main screen.png`, `History.png`, `statistic.png`, `settings.png`.
 
 Implementation screenshots: `C:/VoxPad/work/qml-migration/screenshots/` — `home.png`, `history.png`, `statistics-tooltip.png`, `settings.png`.
 

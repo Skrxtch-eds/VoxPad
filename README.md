@@ -2,11 +2,11 @@
 
 Локальная голосовая диктовка для Windows 10/11 x64. Поставьте курсор в поле, зажмите правый Ctrl, произнесите фразу и отпустите клавишу. VoxPad распознает речь на CPU, скопирует результат и попробует вставить его в исходное окно.
 
-Версия **0.6.0** использует PySide6 / Qt Quick, NVIDIA Parakeet TDT 0.6B v3 INT8 и sherpa-onnx. Интерфейс на русском языке, светлая и тёмная темы, история последних 100 записей, накопительная статистика, индикатор записи поверх других приложений.
+Версия **0.6.1** использует PySide6 / Qt Quick, NVIDIA Parakeet TDT 0.6B v3 INT8 и sherpa-onnx. Интерфейс на русском языке, светлая и тёмная темы, история последних 100 записей, накопительная статистика, индикатор записи поверх других приложений.
 
 ## Скачать
 
-**[Скачать Setup для Windows x64](https://github.com/Skrxtch-eds/VoxPad/releases/download/v0.6.0/VoxPad-0.6.0-Setup-x64.exe)**
+**[Скачать Setup для Windows x64](https://github.com/Skrxtch-eds/VoxPad/releases/download/v0.6.1/VoxPad-0.6.1-Setup-x64.exe)**
 
 1. Откройте установщик и нажмите «Установить».
 2. Дождитесь загрузки и проверки полного комплекта. Python, библиотеки и модель включены.
@@ -15,7 +15,7 @@
 
 Для установки нужен интернет и не менее 4 ГБ свободного места на диске установки. Для диктовки интернет не нужен. Размер полного ZIP указан на странице релиза. Установка выполняется для текущего пользователя в %LOCALAPPDATA%\Programs\VoxPad.
 
-Для работы без установки скачайте [полный ZIP](https://github.com/Skrxtch-eds/VoxPad/releases/download/v0.6.0/VoxPad-0.6.0-Windows-x64-runtime.zip), извлеките всю папку и откройте VoxPad.exe. Папки runtime, app, models и launch.py должны находиться рядом.
+Для работы без установки скачайте [полный ZIP](https://github.com/Skrxtch-eds/VoxPad/releases/download/v0.6.1/VoxPad-0.6.1-Windows-x64-runtime.zip), извлеките всю папку и откройте VoxPad.exe. Папки runtime, app, models и launch.py должны находиться рядом.
 
 Установщик и лаунчер пока не подписаны сертификатом издателя. Windows может показать предупреждение. Для прежней сборки EXE 0.5.2 сохранён [отчёт о блокировке Defender](docs/defender-0.5.2.md).
 
@@ -34,15 +34,15 @@
 - [Решение проблем](docs/troubleshooting.md)
 - [Данные и приватность](docs/privacy.md)
 - [Архитектура, сборка, проверки и публикация](docs/development.md)
-- [Изменения версии 0.6.0](docs/releases/0.6.0.md)
+- [Изменения версии 0.6.1](docs/releases/0.6.1.md)
 - [Технические отчёты](docs/README.md)
 
 ## Запуск из исходников
 
-Нужны Windows x64, Python 3.12 x64 и микрофон.
+Нужны Windows x64, Python 3.14.10 x64 и микрофон.
 
 ```powershell
-py -3.12 -m venv .venv
+py -3.14 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe outputs\source\app.py
 ```

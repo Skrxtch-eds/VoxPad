@@ -1,6 +1,6 @@
 """Launch VoxPad's PySide6 / Qt Quick interface."""
 
-VERSION = '0.6.0'
+VERSION = '0.6.1'
 
 def main():
     from qt_app import main as run

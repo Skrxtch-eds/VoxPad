@@ -1,4 +1,4 @@
-# Установка и обновление 0.6.0
+# Установка и обновление 0.6.1
 
 ## Требования
 
@@ -6,9 +6,9 @@ Windows 10/11 x64, микрофон, .NET Framework 4.8 из Windows, интер
 
 ## Установка
 
-Скачайте VoxPad-0.6.0-Setup-x64.exe из [релиза](https://github.com/Skrxtch-eds/VoxPad/releases/tag/v0.6.0) и нажмите «Установить». Он скачивает полный ZIP с GitHub Releases по HTTPS, сверяет закреплённый SHA-256 и распаковывает компоненты. Загрузка и распаковка поддерживают отмену. При сетевой ошибке повторите установку. Возобновления частичной загрузки пока нет.
+Скачайте VoxPad-0.6.1-Setup-x64.exe из [релиза](https://github.com/Skrxtch-eds/VoxPad/releases/tag/v0.6.1) и нажмите «Установить». Он скачивает полный ZIP с GitHub Releases по HTTPS, сверяет закреплённый SHA-256 и распаковывает компоненты. Загрузка и распаковка поддерживают отмену. При сетевой ошибке повторите установку. Возобновления частичной загрузки пока нет.
 
-Каталог по умолчанию — %LOCALAPPDATA%\Programs\VoxPad. В нём находятся VoxPad.exe, Uninstall.exe, current.txt, папка пользовательских данных data и версии в versions/0.6.0. Внутри версии находятся runtime, app, models, launch.py, installed.flag, BUILD-MANIFEST.json и лицензии. Ярлыки создаются в меню «Пуск» и на рабочем столе. Программа появляется в списке установленных приложений Windows.
+Каталог по умолчанию — %LOCALAPPDATA%\Programs\VoxPad. В нём находятся VoxPad.exe, Uninstall.exe, current.txt, папка пользовательских данных data и версии в versions/0.6.1. Внутри версии находятся runtime, app, models, launch.py, installed.flag, BUILD-MANIFEST.json и лицензии. Ярлыки создаются в меню «Пуск» и на рабочем столе. Программа появляется в списке установленных приложений Windows.
 
 ## Обновление
 
@@ -29,8 +29,8 @@ Windows 10/11 x64, микрофон, .NET Framework 4.8 из Windows, интер
 ## Автоматический запуск установщика
 
 ```powershell
-VoxPad-0.6.0-Setup-x64.exe --silent
-VoxPad-0.6.0-Setup-x64.exe --silent --test-mode --target=C:\VoxPadTest --archive=C:\Downloads\VoxPad-0.6.0-Windows-x64-runtime.zip
+VoxPad-0.6.1-Setup-x64.exe --silent
+VoxPad-0.6.1-Setup-x64.exe --silent --test-mode --target=C:\VoxPadTest --archive=C:\Downloads\VoxPad-0.6.1-Windows-x64-runtime.zip
 ```
 
 --archive использует локальный ZIP с закреплённой суммой. --test-mode отключает ярлыки и регистрацию приложения. --target выбирает отдельную папку. Код возврата 0 означает успех, 1 — ошибку. Дождитесь завершения процесса. Отчёт ошибки находится в %TEMP%\VoxPad-setup-error.log.

@@ -13,12 +13,13 @@ class ReviewRegressions(unittest.TestCase):
         temporary=tempfile.TemporaryDirectory(prefix='.tmp-',dir=Path(__file__).resolve().parent)
         self.addCleanup(temporary.cleanup);self.base=Path(temporary.name)
         self.store=Store(self.base/'data')
-    def test_legacy_ai_flag_is_disabled_without_deleting_profiles(self):
+    def test_removed_ai_settings_are_not_carried_into_preferences(self):
         profile={'id':'old','name':'Saved profile','url':'https://example.invalid','model':'fixture'}
         self.store.save({'ai_enabled':True,'ai_profiles':[profile],'ai_profile':'old'})
         restored=Store(self.base/'data')
         self.assertNotIn('ai_enabled',restored.settings)
-        self.assertEqual(restored.settings['ai_profiles'],[profile])
+        self.assertNotIn('ai_profiles',restored.settings)
+        self.assertNotIn('ai_profile',restored.settings)
         # The AI connection and editor are absent from the runtime, not merely hidden.
         self.assertFalse(hasattr(Controller,'build_ai_settings'))
         self.assertNotIn('ai_cleanup',sys.modules)

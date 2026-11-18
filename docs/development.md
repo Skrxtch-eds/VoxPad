@@ -1,11 +1,11 @@
-# Разработка VoxPad 0.6.0
+# Разработка VoxPad 0.6.1
 
 ## Среда
 
-Windows x64, Python 3.12 x64. Runtime-зависимости закреплены в requirements.txt, инструменты сборки в requirements-build.txt, дополнительные инструменты замеров в requirements-dev.txt.
+Windows x64, Python 3.14.10 x64. Runtime-зависимости закреплены в requirements.txt, инструменты сборки в requirements-build.txt, дополнительные инструменты замеров в requirements-dev.txt.
 
 ```powershell
-py -3.12 -m venv .venv
+py -3.14 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .venv\Scripts\python.exe outputs\source\app.py
 ```
@@ -45,7 +45,7 @@ QML-проверки используют настоящий Qt Quick и отд�
 
 ```powershell
 .venv\Scripts\python.exe scripts/build_runtime_portable.py
-.venv\Scripts\python.exe scripts/build_online_setup.py outputs/VoxPad-0.6.0-Windows-x64-runtime.zip
+.venv\Scripts\python.exe scripts/build_online_setup.py outputs/VoxPad-0.6.1-Windows-x64-runtime.zip
 ```
 
 Первый скрипт сверяет RECORD зависимостей, копирует неизменённый Python, модули и Parakeet, компилирует небольшой Launcher.cs, формирует BUILD-MANIFEST.json и полный ZIP. Второй компилирует Setup.cs с версией, URL релиза и SHA-256 этого ZIP. Переименование или пересборка ZIP требует пересборки установщика.
@@ -57,8 +57,8 @@ QML-проверки используют настоящий Qt Quick и отд�
 ## Проверка дистрибутива
 
 ```powershell
-.venv\Scripts\python.exe tests/runtime_portable_smoke.py outputs/VoxPad-0.6.0-Windows-x64-runtime.zip path/to/public-speech.wav
-.venv\Scripts\python.exe tests/online_setup_smoke.py outputs/VoxPad-0.6.0-Setup-x64.exe outputs/VoxPad-0.6.0-Windows-x64-runtime.zip path/to/public-speech.wav
+.venv\Scripts\python.exe tests/runtime_portable_smoke.py outputs/VoxPad-0.6.1-Windows-x64-runtime.zip path/to/public-speech.wav
+.venv\Scripts\python.exe tests/online_setup_smoke.py outputs/VoxPad-0.6.1-Setup-x64.exe outputs/VoxPad-0.6.1-Windows-x64-runtime.zip path/to/public-speech.wav
 ```
 
 Проверяется установка в отдельную папку без изменения ярлыков/реестра, комплектный runtime, ASR, повтор установки, сохранение данных и удаление. Дополнительно проверьте онлайн-загрузку опубликованного ZIP, установку в чистой Windows, обычный микрофон и Defender. Проверка на компьютере разработчика имеет ограниченный охват.
@@ -78,3 +78,12 @@ QML-проверки используют настоящий Qt Quick и отд�
 Лицензия собственного кода пока не выбрана. Системный Segoe UI берётся из Windows. Уведомления значков находятся в assets/icons. Сборщик копирует лицензии Python и пакетов в licenses, а сведения — в THIRD-PARTY-NOTICES.txt.
 
 Parakeet распространяется NVIDIA по CC BY 4.0. Источник — https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3. Используется ONNX-конвертация INT8 sherpa-onnx, источник и факт преобразования указаны в дистрибутиве. sherpa-onnx использует Apache-2.0. PySide6 Essentials / Qt распространяются на условиях, указанных в комплектных лицензиях. Исторические уведомления Tcl и FFmpeg сохранены в docs/licenses как материалы прежних сборок.
+
+
+## Безопасность релизной среды
+
+Сборка 0.6.1 использует официальный Python 3.14.10. Перед копированием проверяются действующие подписи Python Software Foundation у python.exe, pythonw.exe и python314.dll. Среда Codex для сборки runtime не используется. Зависимости устанавливаются в отдельный venv из requirements-build.txt.
+
+Локальная проверенная копия Python получена из официального пакета NuGet python/3.14.10. SHA-256 пакета — f54ba67c9951c3d773ea47d2bb095150c037c399f0423a968bcda22809241784. CI использует actions/setup-python с закреплённой версией 3.14.10.
+
+Перед публикацией выполните scripts/security_check.py --archive outputs/VoxPad-0.6.1-Windows-x64-runtime.zip --osv. Проверяются токены известных форматов, приватные ключи, пользовательские данные в ZIP и известные уязвимости версий всех поставляемых Python-пакетов. Сетевой запрос OSV содержит только названия и версии. Полный отчёт проверки находится в security-review-2026-11-18.md.

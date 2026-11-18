@@ -15,17 +15,9 @@ DEFAULTS = {
     'microphone_fallback': True, 'background_mode': True, 'paused': False,
 }
 
-REMOVED_SETTINGS = {
-    'language', 'ending', 'capsule_enabled', 'wave_color', 'glass_blur',
-    'sound_volume', 'auto_paste', 'mute_recording', 'export_folder', 'model',
-    'speech_language', 'ai_enabled', 'save_unfinished', 'remove_interjections',
-    'punctuation', 'ending_shortcuts', 'sound_start_enabled', 'sound_stop_enabled',
-}
-
-
 def migrate_settings(saved):
     settings = dict(DEFAULTS)
-    settings.update({key: value for key, value in saved.items() if key not in REMOVED_SETTINGS})
+    settings.update({key: value for key, value in saved.items() if key in DEFAULTS})
     shortcuts = saved.get('shortcuts', {})
     chord = shortcuts.get('dictate') if isinstance(shortcuts, dict) else None
     if not isinstance(chord, list) or not chord or not all(type(key) is int and 1 <= key <= 255 for key in chord):
@@ -92,7 +84,7 @@ class Store:
     def save(self, changes):
         with self.lock:
             updated = migrate_settings({**self.settings, **changes})
-            # Secrets are stored separately in Windows Credential Manager.
+            # The dictation application has no credential fields.
             if any('key' in name.lower() or 'token' in name.lower() for name in changes):
                 raise ValueError('Secrets must not be stored in preferences')
             temp = self.settings_path.with_suffix('.json.tmp')
