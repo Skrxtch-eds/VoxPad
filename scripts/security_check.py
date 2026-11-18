@@ -41,19 +41,24 @@ def main():
             findings.extend(scan(name, path.read_bytes()))
     unwanted = []
     archive_hash = None
+    dependencies = {metadata.metadata(name)['Name']: metadata.version(name) for name in PACKAGES}
     if args.archive:
         with args.archive.open('rb') as stream:
             archive_hash = hashlib.file_digest(stream, 'sha256').hexdigest()
         with zipfile.ZipFile(args.archive) as package:
+            dependencies = json.loads(package.read('VoxPad/BUILD-MANIFEST.json'))['dependencies']
             for name in package.namelist():
-                if '/data/' in name or name.endswith(('.sqlite3', '.raw', '.pem', '.key', '.pfx', '.p12')):
+                basename = name.rsplit('/', 1)[-1]
+                if ('/data/' in name or basename.startswith('.env') or
+                        basename in ('settings.json', 'history.json', 'smoke-test.json') or
+                        name.endswith(('.sqlite', '.sqlite3', '.db', '.raw', '.pem', '.key', '.pfx', '.p12'))):
                     unwanted.append(name)
                 if 'codex' in name.lower():
                     unwanted.append(name)
-                if name.startswith('VoxPad/app/') and name.endswith(('.py', '.qml', '.json')):
+                if name.startswith('VoxPad/app/') and name.endswith(('.py', '.qml', '.json', '.txt', '.md', '.ini', '.yml')):
                     findings.extend(scan(name, package.read(name)))
-    queries = [dict(package=dict(name=metadata.metadata(name)['Name'], ecosystem='PyPI'),
-                    version=metadata.version(name)) for name in PACKAGES]
+    queries = [dict(package=dict(name=name, ecosystem='PyPI'), version=value)
+               for name, value in dependencies.items()]
     advisories = []
     if args.osv:
         request = Request('https://api.osv.dev/v1/querybatch',
